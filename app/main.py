@@ -12,10 +12,10 @@ logging.basicConfig(level=logging.INFO)
 #
 # - decode_bencode(b"5:hello") -> b"hello"
 # - decode_bencode(b"10:hello12345") -> b"hello12345"
-def decode_bencode(bencoded_value):
+def decode_bencode(bencoded_value: bytes):
 
     result_str = ''
-    s = str(bencoded_value)
+    s = bencoded_value.decode()
     match s:
         case s if re.match(r'^\d', s):  # First character is a digit
             logging.info("First character is a digit.")
@@ -30,7 +30,7 @@ def decode_bencode(bencoded_value):
         case _:
             raise NotImplementedError("Only strings are supported at the moment")
 
-    return result_str.encode()
+    return result_str
 
 
 
@@ -42,6 +42,7 @@ def main():
     print("Logs from your program will appear here!", file=sys.stderr)
 
     if command == "decode":
+        # DO NOT CHANGE THIS PART. IT REPRESENTS A BINARY STRING COMING FROM A N/W CONNECTION.
         bencoded_value = sys.argv[2].encode()
 
         # json.dumps() can't handle bytes, but bencoded "strings" need to be
