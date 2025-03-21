@@ -44,10 +44,6 @@ def _decode_bencode(bencoded_value: str, _is_list=False) -> [Any, int]:
     """
     result = []
 
-    #We need to maintain the last processed index, so that we can indicate how much was covered
-    # in this particular nested function execution.
-    last_proc_idx = -1
-
     s = bencoded_value
 
     while s:
@@ -68,10 +64,7 @@ def _decode_bencode(bencoded_value: str, _is_list=False) -> [Any, int]:
                 # update s to next element
                 s = s[content_start_idx+length_of_elem:]
 
-                # in total add : num_digits + 1 + length_of_elem, as these are all processed now.
-                last_proc_idx += content_start_idx+length_of_elem
-
-                logging.info(f"{bencoded_value=}\n{s=}\n{last_proc_idx=}")
+                logging.info(f"{bencoded_value=}\n{s=}\n")
 
             case s if s[0] == 'i':  # Starts with 'i'
                 end_idx = find_cur_element_end(s)
@@ -81,33 +74,28 @@ def _decode_bencode(bencoded_value: str, _is_list=False) -> [Any, int]:
                 # update s to start from there.
                 s = s[end_idx+1:]
 
-                # The length of the num is processed now.
-                last_proc_idx += end_idx+1
-
-                logging.info(f"{bencoded_value=}\n{s=}\n{last_proc_idx=}")
+                logging.info(f"{bencoded_value=}\n{s=}")
 
             case s if s[0] == 'l': # Starts with 'l'
 
-                elems_list, num_letters_proc =  _decode_bencode(s[1:] ,_is_list=True)
+                elems_list, s =  _decode_bencode(s[1:] ,_is_list=True)
                 # If this is a list, then no more processing at this level.
                 # The contents of the list will be handled recursively.
                 result.append(elems_list)
-                last_proc_idx += num_letters_proc+1
-                s = s[last_proc_idx+1:]
 
-                logging.info(f"{bencoded_value=}\n{s=}\n{last_proc_idx=}")
+                logging.info(f"{bencoded_value=}\n{s=}")
 
             case s if s[0] == 'e':
                 # This means that this is an end of a list. Return the result
-                last_proc_idx += 1
+                s = s[1:]
                 break
 
             case _:
-                logging.info(f"{bencoded_value=}\n{s=}\n{last_proc_idx=}")
+                logging.info(f"{bencoded_value=}\n{s=}")
                 raise ValueError("Invalid encoded value")
 
 
-    return (result if _is_list else result[0]), last_proc_idx+1
+    return (result if _is_list else result[0]), s
 
 def decode_bencode(bencoded_value: str):
     return _decode_bencode(bencoded_value)[0]
