@@ -14,7 +14,7 @@ logging.basicConfig(level=logging.INFO)
 # - decode_bencode(b"10:hello12345") -> b"hello12345"
 def decode_bencode(bencoded_value: bytes):
 
-    result_str = ''
+    result = ''
     s = bencoded_value.decode()
     match s:
         case s if re.match(r'^\d', s):  # First character is a digit
@@ -22,15 +22,15 @@ def decode_bencode(bencoded_value: bytes):
             length_str, content = (s.rsplit(':', 1) + [None])[:2]
             if not content:
                 raise ValueError("Invalid encoded value")
-            result_str = content
+            result = content
         case s if re.match(r'^i.*e$', s):  # Starts with 'i', ends with 'e'
             logging.info("Starts with 'i' and ends with 'e'.")
             content = s[1:-1]
-            result_str = content
+            result = int(content)
         case _:
             raise NotImplementedError("Only strings are supported at the moment")
 
-    return result_str
+    return result
 
 
 
@@ -58,8 +58,8 @@ def main():
 
         # Uncomment this block to pass the first stage
         decoded_val = decode_bencode(bencoded_value)
-        print(decoded_val)
-        # print(json.dumps(decode_bencode(bencoded_value), default=bytes_to_str))
+        # print(decoded_val)
+        print(json.dumps(decode_bencode(bencoded_value), default=bytes_to_str))
     else:
         raise NotImplementedError(f"Unknown command {command}")
 
