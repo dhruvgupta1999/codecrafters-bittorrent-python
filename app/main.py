@@ -98,7 +98,7 @@ def _decode_bencode(bencoded_value: str, _is_list=False) -> [Any, int]:
     return (result if _is_list else result[0]), s
 
 def decode_bencode(bencoded_value: str):
-    return _decode_bencode(bencoded_value)[0]
+    # return _decode_bencode(bencoded_value)[0]
 
 
 # Examples:
