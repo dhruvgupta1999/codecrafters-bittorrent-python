@@ -2,11 +2,26 @@ import json
 import sys
 import re
 import logging
+from typing import Any
 
 logging.basicConfig(level=logging.INFO)
 
 # import bencodepy - available if you need it!
 # import requests - available if you need it!
+
+def find_list_end(s):
+    if len(s) < 2:
+        raise ValueError("Invalid encoded value")
+    count_ints = 0
+    for idx, ch in enumerate(s):
+        if ch == 'e' :
+            if count_ints:
+                count_ints -= 1
+            else:
+                return idx
+        if ch == 'i':
+            count_ints += 1
+    raise ValueError("Invalid encoded value")
 
 
 def find_cur_element_end(elem_str):
@@ -16,26 +31,24 @@ def find_cur_element_end(elem_str):
         raise ValueError("Invalid encoded value")
     return e_idx
 
-def decode_bencode(bencoded_value: bytes):
-    """
 
-    assumes list within list is not allowed.
-
-
-    :param bencoded_value:
-    :return:
+def _decode_bencode(bencoded_value: str, _is_list=False) -> [Any, int]:
     """
 
 
+    list within list is also possible.
+    eg:
+    lli777e4:pearee
+    [[777,"pear"]]
 
+    """
     result = []
-    is_list = False
 
-    # # get rid of the 'l' and ending 'e'
-    # s = bencoded_list_str[1:-1]
-    # cnt = 0
-    s = bencoded_value.decode()
+    #We need to maintain the last processed index, so that we can indicate how much was covered
+    # in this particular nested function execution.
+    last_proc_idx = -1
 
+    s = bencoded_value
 
     while s:
 
@@ -55,6 +68,11 @@ def decode_bencode(bencoded_value: bytes):
                 # update s to next element
                 s = s[content_start_idx+length_of_elem:]
 
+                # in total add : num_digits + 1 + length_of_elem, as these are all processed now.
+                last_proc_idx += content_start_idx+length_of_elem
+
+                logging.info(f"{bencoded_value=}\n{s=}\n{last_proc_idx=}")
+
             case s if s[0] == 'i':  # Starts with 'i'
                 end_idx = find_cur_element_end(s)
                 int_content = s[1:end_idx]
@@ -63,22 +81,36 @@ def decode_bencode(bencoded_value: bytes):
                 # update s to start from there.
                 s = s[end_idx+1:]
 
+                # The length of the num is processed now.
+                last_proc_idx += end_idx+1
+
+                logging.info(f"{bencoded_value=}\n{s=}\n{last_proc_idx=}")
+
             case s if s[0] == 'l': # Starts with 'l'
-                if s[-1] != 'e':
-                    raise ValueError("Invalid encoded value")
-                # we don't really need to do anything special for this
-                # so, simply update s.
-                # update s to ignore
-                s = s[1:-1]
-                is_list = True
+
+                elems_list, num_letters_proc =  _decode_bencode(s[1:] ,_is_list=True)
+                # If this is a list, then no more processing at this level.
+                # The contents of the list will be handled recursively.
+                result.append(elems_list)
+                last_proc_idx += num_letters_proc+1
+                s = s[last_proc_idx+1:]
+
+                logging.info(f"{bencoded_value=}\n{s=}\n{last_proc_idx=}")
+
+            case s if s[0] == 'e':
+                # This means that this is an end of a list. Return the result
+                last_proc_idx += 1
+                break
 
             case _:
+                logging.info(f"{bencoded_value=}\n{s=}\n{last_proc_idx=}")
                 raise ValueError("Invalid encoded value")
 
 
-    # if it has just one element, then it isn't really a list...
-    return result if is_list else result[0]
+    return (result if _is_list else result[0]), last_proc_idx+1
 
+def decode_bencode(bencoded_value: str):
+    return _decode_bencode(bencoded_value)[0]
 
 
 # Examples:
@@ -134,6 +166,7 @@ def main():
             raise TypeError(f"Type not serializable: {type(data)}")
 
         # Uncomment this block to pass the first stage
+        bencoded_value = bencoded_value.decode()
         print(json.dumps(decode_bencode(bencoded_value), default=bytes_to_str))
     else:
         raise NotImplementedError(f"Unknown command {command}")
