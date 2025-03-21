@@ -19,7 +19,7 @@ def decode_bencode(bencoded_value: bytes):
     match s:
         case s if re.match(r'^\d', s):  # First character is a digit
             logging.info("First character is a digit.")
-            length_str, content = (s.rsplit(':', 1) + [None])[:2]
+            length_str, content = (s.split(':', 1) + [None])[:2]
             if not content:
                 raise ValueError("Invalid encoded value")
             result = content

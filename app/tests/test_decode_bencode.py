@@ -7,6 +7,7 @@ from app.main import decode_bencode
 def test_valid_string_decoding():
     assert decode_bencode(b"5:hello") == "hello"
     assert decode_bencode(b"11:hello world") == "hello world"
+    assert decode_bencode(b"20:http://abc.com/announce") == "http://abc.com/announce"
 
 def test_valid_int_decoding():
     assert decode_bencode(b"i1401538053e") == 1401538053
