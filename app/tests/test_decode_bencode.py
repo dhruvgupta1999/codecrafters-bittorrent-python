@@ -29,6 +29,17 @@ def test_valid_list_decoding_with_nesting():
     assert decode_bencode("l5:hellol5:hellol5:helloeee") == ["hello",['hello', ['hello']]]
     assert decode_bencode("lli777e4:pearel5:helloee") == [[777,"pear"],['hello']]
 
+def test_valid_dict_decoding():
+    assert decode_bencode("d5:helloi52ee") == {"hello": 52}
+    assert decode_bencode("d3:foo3:bar5:apple5:fruiti100ei21ee") == {"foo": "bar", "apple": "fruit", 100: 21}
+    assert decode_bencode("d4:name5:alice3:agei25ee") == {"name": "alice", "age": 25}
+
+def test_invalid_dict_decoding():
+    with pytest.raises(ValueError, match="Invalid encoded value"):
+        decode_bencode("d5:hello5:worldi10e")  # Odd number of elements
+    with pytest.raises(ValueError, match="Invalid encoded value"):
+        decode_bencode("d5:hello")  # No closing 'e'
+
 def test_unsupported_format():
     with pytest.raises(ValueError, match="Invalid encoded value"):
         decode_bencode("bencoded")

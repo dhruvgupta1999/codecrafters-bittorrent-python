@@ -32,7 +32,7 @@ def find_cur_element_end(elem_str):
     return e_idx
 
 
-def _decode_bencode(bencoded_value: str, _is_list=False) -> [Any, int]:
+def _decode_bencode(bencoded_value: str, _is_list=False, _is_dict=False) -> [Any, int]:
     """
 
 
@@ -40,6 +40,11 @@ def _decode_bencode(bencoded_value: str, _is_list=False) -> [Any, int]:
     eg:
     lli777e4:pearee
     [[777,"pear"]]
+
+    can handle dicts also:
+    eg:
+    dl5:helloei52ee
+    {['hello]: 52}
 
     """
     result = []
@@ -79,10 +84,13 @@ def _decode_bencode(bencoded_value: str, _is_list=False) -> [Any, int]:
             case s if s[0] == 'l': # Starts with 'l'
 
                 elems_list, s =  _decode_bencode(s[1:] ,_is_list=True)
-                # If this is a list, then no more processing at this level.
-                # The contents of the list will be handled recursively.
                 result.append(elems_list)
+                logging.info(f"{bencoded_value=}\n{s=}")
 
+            case s if s[0] == 'd':
+
+                elems_dict, s = _decode_bencode(s[1:], _is_dict=True)
+                result.append(elems_dict)
                 logging.info(f"{bencoded_value=}\n{s=}")
 
             case s if s[0] == 'e':
@@ -95,10 +103,17 @@ def _decode_bencode(bencoded_value: str, _is_list=False) -> [Any, int]:
                 raise ValueError("Invalid encoded value")
 
 
-    return (result if _is_list else result[0]), s
+    if _is_list:
+        return result, s
+    if _is_dict:
+        if len(result) % 2:
+            raise ValueError("Invalid encoded value")
+        return { result[i]:result[i+1] for i in range(0,len(result),2) }, s
+
+    return result[0], s
 
 def decode_bencode(bencoded_value: str):
-    # return _decode_bencode(bencoded_value)[0]
+    return _decode_bencode(bencoded_value)[0]
 
 
 # Examples:
