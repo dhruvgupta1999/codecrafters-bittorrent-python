@@ -1,5 +1,9 @@
 import json
 import sys
+import re
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 # import bencodepy - available if you need it!
 # import requests - available if you need it!
@@ -9,13 +13,26 @@ import sys
 # - decode_bencode(b"5:hello") -> b"hello"
 # - decode_bencode(b"10:hello12345") -> b"hello12345"
 def decode_bencode(bencoded_value):
-    if chr(bencoded_value[0]).isdigit():
-        first_colon_index = bencoded_value.find(b":")
-        if first_colon_index == -1:
-            raise ValueError("Invalid encoded value")
-        return bencoded_value[first_colon_index+1:]
-    else:
-        raise NotImplementedError("Only strings are supported at the moment")
+
+    result_str = ''
+    s = str(bencoded_value)
+    match s:
+        case s if re.match(r'^\d', s):  # First character is a digit
+            logging.info("First character is a digit.")
+            length_str, content = (s.rsplit(':', 1) + [None])[:2]
+            if not content:
+                raise ValueError("Invalid encoded value")
+            result_str = content
+        case s if re.match(r'^i.*e$', s):  # Starts with 'i', ends with 'e'
+            logging.info("Starts with 'i' and ends with 'e'.")
+            content = s[1:-1]
+            result_str = content
+        case _:
+            raise NotImplementedError("Only strings are supported at the moment")
+
+    return result_str.encode()
+
+
 
 
 def main():
