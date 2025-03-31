@@ -151,8 +151,8 @@ def main():
             decoded_val = decode_bencode(bencoded_value)
             logging.info(f"decoded tor file: {decoded_val}")
             # The 'announce' field has the tracker url.
-            print(f'Tracker URL: {decoded_val['announce']}')
-            print(f'Length: {decoded_val['info']['length']}')
+            print(f'Tracker URL: {decoded_val[b'announce'].decode()}')
+            print(f'Length: {decoded_val[b'info'][b'length'].decode()}')
     else:
         raise NotImplementedError(f"Unknown command {command}")
 
