@@ -9,21 +9,6 @@ logging.basicConfig(level=logging.INFO)
 # import bencodepy - available if you need it!
 # import requests - available if you need it!
 
-def find_list_end(s):
-    if len(s) < 2:
-        raise ValueError("Invalid encoded value")
-    count_ints = 0
-    for idx, ch in enumerate(s):
-        if ch == 'e' :
-            if count_ints:
-                count_ints -= 1
-            else:
-                return idx
-        if ch == 'i':
-            count_ints += 1
-    raise ValueError("Invalid encoded value")
-
-
 def find_cur_element_end(elem_str):
     # find next 'e' which indicates END of current element only.
     e_idx = elem_str.find('e')
@@ -168,9 +153,32 @@ def main():
 
             raise TypeError(f"Type not serializable: {type(data)}")
 
-        # Uncomment this block to pass the first stage
-        bencoded_value = bencoded_value.decode()
-        print(json.dumps(decode_bencode(bencoded_value), default=bytes_to_str))
+        decoded_val = bencoded_value.decode()
+        print(json.dumps(decode_bencode(decoded_val), default=bytes_to_str))
+    elif command == 'info':
+        tor_file_path = sys.argv[2]
+        bencoded_value = b''
+        with open(tor_file_path, 'r') as tor_file:
+            """
+            Tor file format
+            
+            contains a bencoded dictionary with the following keys and values:
+            
+            announce:
+            URL to a "tracker", which is a central server that keeps track of peers participating in the sharing of a torrent.
+            
+            info:
+            A dictionary with keys:
+            - length: size of the file in bytes, for single-file torrents
+            - name: suggested name to save the file / directory as
+            - piece length: number of bytes in each piece
+            - pieces: concatenated SHA-1 hashes of each piece
+            """
+            bencoded_value = tor_file.read()
+            decoded_val = bencoded_value.decode()
+            # The 'announce' field has the tracker url.
+            print(f'Tracker URL: {decoded_val['announce']}')
+            print(f'Length: {decoded_val['info']['length']}')
     else:
         raise NotImplementedError(f"Unknown command {command}")
 
