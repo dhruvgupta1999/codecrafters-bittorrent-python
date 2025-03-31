@@ -125,8 +125,7 @@ def main():
             raise TypeError(f"Type not serializable: {type(data)}")
 
         # Convert bytes type to str type.
-        bencoded_value_as_str = bencoded_value.decode()
-        print(json.dumps(decode_bencode(bencoded_value_as_str), default=bytes_to_str))
+        print(json.dumps(decode_bencode(bencoded_value), default=bytes_to_str))
     elif command == 'info':
         tor_file_path = sys.argv[2]
         bencoded_value = b''
@@ -149,8 +148,7 @@ def main():
             bencoded_value = tor_file.read()
             logging.info(f'tor file datatype: {type(bencoded_value)}')
             logging.info(f'tor file data as str: {str(bencoded_value)}')
-            bencoded_value_as_str = bencoded_value.decode()
-            decoded_val = decode_bencode(bencoded_value_as_str)
+            decoded_val = decode_bencode(bencoded_value)
             # The 'announce' field has the tracker url.
             print(f'Tracker URL: {decoded_val['announce']}')
             print(f'Length: {decoded_val['info']['length']}')
