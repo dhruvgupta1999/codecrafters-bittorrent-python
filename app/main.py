@@ -121,11 +121,15 @@ def main():
         def bytes_to_str(data):
             if isinstance(data, bytes):
                 return data.decode()
+            if isinstance(data, list):
+                return [bytes_to_str(elem) for elem in data]
+            if isinstance(data, dict):
+                return {bytes_to_str(k): bytes_to_str(v) for k,v in data.items()}
 
             raise TypeError(f"Type not serializable: {type(data)}")
 
         # Convert bytes type to str type.
-        print(json.dumps(decode_bencode(bencoded_value).decode(), default=bytes_to_str))
+        print(json.dumps(bytes_to_str(decode_bencode(bencoded_value)), default=bytes_to_str))
     elif command == 'info':
         tor_file_path = sys.argv[2]
         bencoded_value = b''
