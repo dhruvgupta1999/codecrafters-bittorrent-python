@@ -125,6 +125,8 @@ def main():
                 return [bytes_to_str(elem) for elem in data]
             if isinstance(data, dict):
                 return {bytes_to_str(k): bytes_to_str(v) for k,v in data.items()}
+            if isinstance(data, int|str):
+                return data
 
             raise TypeError(f"Type not serializable: {type(data)}")
 
