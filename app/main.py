@@ -176,9 +176,10 @@ def main():
             - pieces: concatenated SHA-1 hashes of each piece
             """
             bencoded_value = tor_file.read()
-            logging.info('tor file datatype:', type(bencoded_value))
-            logging.info('tof file data as str:', str(bencoded_value))
-            decoded_val = bencoded_value.decode()
+            logging.info(f'tor file datatype: {type(bencoded_value)}')
+            logging.info(f'tor file data as str: {str(bencoded_value)}')
+            bencoded_value_as_str = bencoded_value.decode()
+            decoded_val = decode_bencode(bencoded_value_as_str)
             # The 'announce' field has the tracker url.
             print(f'Tracker URL: {decoded_val['announce']}')
             print(f'Length: {decoded_val['info']['length']}')
