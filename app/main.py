@@ -158,7 +158,7 @@ def main():
     elif command == 'info':
         tor_file_path = sys.argv[2]
         bencoded_value = b''
-        with open(tor_file_path, 'r') as tor_file:
+        with open(tor_file_path, 'rb') as tor_file:
             """
             Tor file format
             
