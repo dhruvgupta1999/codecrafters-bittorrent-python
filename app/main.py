@@ -11,13 +11,13 @@ logging.basicConfig(level=logging.INFO)
 
 def find_cur_element_end(elem_str):
     # find next 'e' which indicates END of current element only.
-    e_idx = elem_str.find('e')
+    e_idx = elem_str.find(b'e')
     if e_idx == -1:
         raise ValueError("Invalid encoded value")
     return e_idx
 
 
-def _decode_bencode(bencoded_value: str, _is_list=False, _is_dict=False) -> [Any, int]:
+def _decode_bencode(bencoded_value: bytes, _is_list=False, _is_dict=False) -> [Any, bytes]:
     """
 
 
@@ -39,8 +39,8 @@ def _decode_bencode(bencoded_value: str, _is_list=False, _is_dict=False) -> [Any
     while s:
 
         match s:
-            case s if re.match(r'^\d', s):  # First character is a digit
-                colon_idx = s.find(':')
+            case s if re.match(rb'^\d', s):  # First character is a digit
+                colon_idx = s.find(b':')
                 if colon_idx == -1:
                     raise ValueError("Invalid encoded value")
 
@@ -50,13 +50,14 @@ def _decode_bencode(bencoded_value: str, _is_list=False, _is_dict=False) -> [Any
                 elem_content = s[content_start_idx: content_start_idx+length_of_elem]
                 if len(elem_content) != length_of_elem:
                     raise ValueError("Invalid encoded value")
+
                 result.append(elem_content)
                 # update s to next element
                 s = s[content_start_idx+length_of_elem:]
 
                 logging.info(f"{bencoded_value=}\n{s=}\n")
 
-            case s if s[0] == 'i':  # Starts with 'i'
+            case s if s[:1] == b'i':  # Starts with 'i'
                 end_idx = find_cur_element_end(s)
                 int_content = s[1:end_idx]
                 result.append(int(int_content))
@@ -66,19 +67,19 @@ def _decode_bencode(bencoded_value: str, _is_list=False, _is_dict=False) -> [Any
 
                 logging.info(f"{bencoded_value=}\n{s=}")
 
-            case s if s[0] == 'l': # Starts with 'l'
+            case s if s[:1] == b'l': # Starts with 'l'
 
                 elems_list, s =  _decode_bencode(s[1:] ,_is_list=True)
                 result.append(elems_list)
                 logging.info(f"{bencoded_value=}\n{s=}")
 
-            case s if s[0] == 'd':
+            case s if s[:1] == b'd':
 
                 elems_dict, s = _decode_bencode(s[1:], _is_dict=True)
                 result.append(elems_dict)
                 logging.info(f"{bencoded_value=}\n{s=}")
 
-            case s if s[0] == 'e':
+            case s if s[:1] == b'e':
                 # This means that this is an end of a list. Return the result
                 s = s[1:]
                 break
@@ -91,45 +92,15 @@ def _decode_bencode(bencoded_value: str, _is_list=False, _is_dict=False) -> [Any
     if _is_list:
         return result, s
     if _is_dict:
+        # The dict can't have odd number of elements. as key:val * n  = 2*n
         if len(result) % 2:
             raise ValueError("Invalid encoded value")
         return { result[i]:result[i+1] for i in range(0,len(result),2) }, s
 
     return result[0], s
 
-def decode_bencode(bencoded_value: str):
+def decode_bencode(bencoded_value: bytes):
     return _decode_bencode(bencoded_value)[0]
-
-
-# Examples:
-#
-# - decode_bencode(b"5:hello") -> b"hello"
-# - decode_bencode(b"10:hello12345") -> b"hello12345"
-def decode_bencode_old(bencoded_value: bytes):
-
-    result = ''
-    s = bencoded_value.decode()
-    match s:
-        case s if re.match(r'^\d', s):  # First character is a digit
-            logging.info("First character is a digit.")
-            length_str, content = (s.split(':', 1) + [None])[:2]
-            if not content:
-                raise ValueError("Invalid encoded value")
-            result = content
-        case s if re.match(r'^i.*e$', s):  # Starts with 'i', ends with 'e'
-            logging.info("Starts with 'i' and ends with 'e'.")
-            content = s[1:-1]
-            result = int(content)
-        case s if re.match(r'^l.*e$', s): # Starts with 'l', ends with 'e'
-            logging.info("Starts with 'l' and ends with 'e'. (list)")
-
-
-        case _:
-            raise NotImplementedError("Only strings are supported at the moment")
-
-    return result
-
-
 
 
 def main():

@@ -1,0 +1,21 @@
+1.
+Writing readable code for this is actual hardwork.
+I don't even want to look at my implementation for decoding the bencoded string.
+
+2.
+Unit tests helped modify my code to keep it correct in face of changing requirements.
+
+3.
+Changing requirements was a serious problem.
+Like didn't expect list also to be there, only simple int and str.
+
+Then I didn't expect that bytes datatype can have characters which are not supported in utf8.
+So I had to change my decode_bencoded_string() implementation to use purely bytes.
+
+So plan ahead if at all possible.
+Complain less when you see crappy code at office.
+Changing requirements and limited time can do that to you.
+Just write good enough unit tests so you know it works.
+Refactor if you have the time.
+
+4.
