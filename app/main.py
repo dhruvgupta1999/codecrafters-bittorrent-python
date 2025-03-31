@@ -153,8 +153,9 @@ def main():
 
             raise TypeError(f"Type not serializable: {type(data)}")
 
-        decoded_val = bencoded_value.decode()
-        print(json.dumps(decode_bencode(decoded_val), default=bytes_to_str))
+        # Convert bytes type to str type.
+        bencoded_value_as_str = bencoded_value.decode()
+        print(json.dumps(decode_bencode(bencoded_value_as_str), default=bytes_to_str))
     elif command == 'info':
         tor_file_path = sys.argv[2]
         bencoded_value = b''
@@ -175,6 +176,8 @@ def main():
             - pieces: concatenated SHA-1 hashes of each piece
             """
             bencoded_value = tor_file.read()
+            logging.info('tor file datatype:', type(bencoded_value))
+            logging.info('tof file data as str:', str(bencoded_value))
             decoded_val = bencoded_value.decode()
             # The 'announce' field has the tracker url.
             print(f'Tracker URL: {decoded_val['announce']}')
