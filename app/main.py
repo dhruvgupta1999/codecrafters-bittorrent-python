@@ -17,87 +17,77 @@ def find_cur_element_end(elem_str):
     return e_idx
 
 
-def _decode_bencode(bencoded_value: bytes, _is_list=False, _is_dict=False) -> [Any, bytes]:
+def _decode_bencode(bencoded_value: bytes, _is_list=False, _is_dict=False) -> tuple[Any, bytes]:
     """
+    Decodes a bencoded value (used in BitTorrent metadata).
+    Supports strings, integers, lists, and dictionaries.
 
-
-    list within list is also possible.
-    eg:
-    lli777e4:pearee
-    [[777,"pear"]]
-
-    can handle dicts also:
-    eg:
-    dl5:helloei52ee
-    {['hello]: 52}
-
+    Example Inputs:
+        b'4:pear' => 'pear'
+        b'i52e' => 52
+        b'li777e4:peare' => [777, 'pear']
+        b'lli777e4:pearee' => [[777,"pear"]]
+        b'd5:helloi52ee' => {'hello': 52}
     """
+    s = bencoded_value
     result = []
 
-    s = bencoded_value
-
     while s:
+        if re.match(rb'^\d', s):  # Case: String (starts with a digit)
+            colon_idx = s.find(b':')
+            if colon_idx == -1:
+                raise ValueError("Invalid encoded value: Missing colon in string encoding")
 
-        match s:
-            case s if re.match(rb'^\d', s):  # First character is a digit
-                colon_idx = s.find(b':')
-                if colon_idx == -1:
-                    raise ValueError("Invalid encoded value")
+            length_of_elem = int(s[:colon_idx])
+            # eg: 12:sjdfhsldkfjghfd  => 2 + 1 = 3 is the content start idx.
+            content_start_idx = colon_idx + 1
+            elem_content = s[content_start_idx: content_start_idx + length_of_elem]
 
-                length_of_elem = int(s[:colon_idx])
-                # eg: 12:sjdfhsldkfjghfd  => 2 + 1 = 3 is the content start idx.
-                content_start_idx = colon_idx + 1
-                elem_content = s[content_start_idx: content_start_idx+length_of_elem]
-                if len(elem_content) != length_of_elem:
-                    raise ValueError("Invalid encoded value")
+            if len(elem_content) != length_of_elem:
+                raise ValueError("Invalid encoded value: Incorrect string length")
 
-                result.append(elem_content)
-                # update s to next element
-                s = s[content_start_idx+length_of_elem:]
+            result.append(elem_content)
+            s = s[content_start_idx + length_of_elem:]  # Move to next element
 
-                logging.info(f"{bencoded_value=}\n{s=}\n")
+            logging.info(f"{bencoded_value=}\n{s=}\n")
 
-            case s if s[:1] == b'i':  # Starts with 'i'
-                end_idx = find_cur_element_end(s)
-                int_content = s[1:end_idx]
-                result.append(int(int_content))
-                # next element comes after the 'e'.
-                # update s to start from there.
-                s = s[end_idx+1:]
+        elif s.startswith(b'i'):  # Case: Integer (starts with 'i')
+            end_idx = find_cur_element_end(s)
+            int_content = int(s[1:end_idx])
+            result.append(int_content)
+            s = s[end_idx + 1:]  # Skip 'e' and move to the next element
 
-                logging.info(f"{bencoded_value=}\n{s=}")
+            logging.info(f"{bencoded_value=}\n{s=}")
 
-            case s if s[:1] == b'l': # Starts with 'l'
+        elif s.startswith(b'l'):  # Case: List (starts with 'l')
+            elems_list, s = _decode_bencode(s[1:], _is_list=True)
+            result.append(elems_list)
+            logging.info(f"{bencoded_value=}\n{s=}")
 
-                elems_list, s =  _decode_bencode(s[1:] ,_is_list=True)
-                result.append(elems_list)
-                logging.info(f"{bencoded_value=}\n{s=}")
+        elif s.startswith(b'd'):  # Case: Dictionary (starts with 'd')
+            elems_dict, s = _decode_bencode(s[1:], _is_dict=True)
+            result.append(elems_dict)
+            logging.info(f"{bencoded_value=}\n{s=}")
 
-            case s if s[:1] == b'd':
+        elif s.startswith(b'e'):  # Case: End of list or dictionary
+            s = s[1:]
+            break
 
-                elems_dict, s = _decode_bencode(s[1:], _is_dict=True)
-                result.append(elems_dict)
-                logging.info(f"{bencoded_value=}\n{s=}")
-
-            case s if s[:1] == b'e':
-                # This means that this is an end of a list. Return the result
-                s = s[1:]
-                break
-
-            case _:
-                logging.info(f"{bencoded_value=}\n{s=}")
-                raise ValueError("Invalid encoded value")
-
+        else:
+            logging.info(f"{bencoded_value=}\n{s=}")
+            raise ValueError("Invalid encoded value: Unrecognized format")
 
     if _is_list:
         return result, s
-    if _is_dict:
-        # The dict can't have odd number of elements. as key:val * n  = 2*n
-        if len(result) % 2:
-            raise ValueError("Invalid encoded value")
-        return { result[i]:result[i+1] for i in range(0,len(result),2) }, s
 
-    return result[0], s
+    if _is_dict:
+        # The dict can't have odd number of elements, as key:val * n = 2*n
+        if len(result) % 2:
+            raise ValueError("Invalid encoded value: Dictionary must have even number of elements (key-value pairs)")
+        return {result[i]: result[i + 1] for i in range(0, len(result), 2)}, s
+
+    return result[0] if result else None, s
+
 
 def decode_bencode(bencoded_value: bytes):
     return _decode_bencode(bencoded_value)[0]
