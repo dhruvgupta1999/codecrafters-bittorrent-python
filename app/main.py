@@ -1,3 +1,4 @@
+import hashlib
 import json
 import sys
 import re
@@ -9,7 +10,49 @@ logging.basicConfig(level=logging.INFO)
 # import bencodepy - available if you need it!
 # import requests - available if you need it!
 
-def find_cur_element_end(elem_str):
+
+def bencode_data(my_data: Any) -> bytes:
+    """
+    Binary encode data.
+    """
+    result = b''
+
+    if isinstance(my_data, dict):
+        sub_results = []
+        for k in sorted(my_data):
+            v = my_data[k]
+            sub_results.extend([bencode_data(k), bencode_data(v)])
+
+        return b'd' + b''.join(sub_results) + b'e'
+
+    if isinstance(my_data, list):
+        sub_results = []
+        for item in my_data:
+            sub_results.append(bencode_data(item))
+
+        return b'l' + b''.join(sub_results) + b'e'
+
+    if isinstance(my_data, str):
+        return str(len(my_data)).encode() + b':' + my_data.encode()
+
+    if isinstance(my_data, int):
+        return b'i' + str(my_data).encode() + b'e'
+
+    # If my_data is bytes type. That means it's a string in the tor file.
+    # Return it in format "length:content"
+    if isinstance(my_data, bytes):
+        return str(len(my_data)).encode() + b':' + my_data
+
+    raise TypeError(f"Unexpected type of param: {my_data} of type {type(my_data)}")
+
+
+def get_info_sha_hash(info: dict):
+    bencoded_info = bencode_data(info)
+    sha256_hash = hashlib.sha256(bencoded_info).hexdigest()
+    return sha256_hash
+
+
+def _find_cur_element_end(elem_str):
     # find next 'e' which indicates END of current element only.
     e_idx = elem_str.find(b'e')
     if e_idx == -1:
@@ -28,6 +71,12 @@ def _decode_bencode(bencoded_value: bytes, _is_list=False, _is_dict=False) -> tu
         b'li777e4:peare' => [777, 'pear']
         b'lli777e4:pearee' => [[777,"pear"]]
         b'd5:helloi52ee' => {'hello': 52}
+
+    Note:
+        Remember that bencoded strings are not actually strings, they are bytes of specified length.
+        They can contain \x00 char.
+        Because of this it is not always possible that bytes_obj.decode() gives an error saying that decoding
+        to UTF is not possible.
     """
     s = bencoded_value
     result = []
@@ -52,7 +101,7 @@ def _decode_bencode(bencoded_value: bytes, _is_list=False, _is_dict=False) -> tu
             logging.info(f"{bencoded_value=}\n{s=}\n")
 
         elif s.startswith(b'i'):  # Case: Integer (starts with 'i')
-            end_idx = find_cur_element_end(s)
+            end_idx = _find_cur_element_end(s)
             int_content = int(s[1:end_idx])
             result.append(int_content)
             s = s[end_idx + 1:]  # Skip 'e' and move to the next element
@@ -149,6 +198,7 @@ def main():
             # The 'announce' field has the tracker url.
             print(f'Tracker URL: {decoded_val[b'announce'].decode()}')
             print(f'Length: {decoded_val[b'info'][b'length']}')
+            print(f': {get_info_sha_hash(decoded_val[b'info'])}')
     else:
         raise NotImplementedError(f"Unknown command {command}")
 
