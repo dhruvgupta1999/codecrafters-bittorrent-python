@@ -48,8 +48,8 @@ def bencode_data(my_data: Any) -> bytes:
 
 def get_info_sha_hash(info: dict):
     bencoded_info = bencode_data(info)
-    sha256_hash = hashlib.sha256(bencoded_info).hexdigest()
-    return sha256_hash
+    sha1_hash = hashlib.sha1(bencoded_info).hexdigest()
+    return sha1_hash
 
 
 def _find_cur_element_end(elem_str):
