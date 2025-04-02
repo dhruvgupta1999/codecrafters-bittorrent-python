@@ -198,7 +198,7 @@ def main():
             # The 'announce' field has the tracker url.
             print(f'Tracker URL: {decoded_val[b'announce'].decode()}')
             print(f'Length: {decoded_val[b'info'][b'length']}')
-            print(f': {get_info_sha_hash(decoded_val[b'info'])}')
+            print(f'Info Hash: {get_info_sha_hash(decoded_val[b'info'])}')
     else:
         raise NotImplementedError(f"Unknown command {command}")
 
