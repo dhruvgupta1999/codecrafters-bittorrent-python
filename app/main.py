@@ -198,6 +198,8 @@ def main():
             # The 'announce' field has the tracker url.
             print(f'Tracker URL: {decoded_val[b'announce'].decode()}')
             print(f'Length: {decoded_val[b'info'][b'length']}')
+            # Check x = inv_f(f(x))
+            assert decoded_val[b'info'] == decode_bencode(bencode_data(decoded_val[b'info']))
             print(f'Info Hash: {get_info_sha_hash(decoded_val[b'info'])}')
     else:
         raise NotImplementedError(f"Unknown command {command}")
