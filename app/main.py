@@ -201,6 +201,10 @@ def main():
             # Check x = inv_f(f(x))
             assert decoded_val[b'info'] == decode_bencode(bencode_data(decoded_val[b'info']))
             print(f'Info Hash: {get_info_sha_hash(decoded_val[b'info'])}')
+            print(f'Piece Length: {decoded_val[b'info'][b'piece length']}')
+            print(f'Piece Hashes:')
+            piece_hashes_as_str = '\n'.join(decoded_val[b'info'][b'pieces'])
+            print(piece_hashes_as_str)
     else:
         raise NotImplementedError(f"Unknown command {command}")
 
