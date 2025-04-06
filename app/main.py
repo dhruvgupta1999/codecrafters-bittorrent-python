@@ -203,8 +203,8 @@ def main():
             print(f'Info Hash: {get_info_sha_hash(decoded_val[b'info'])}')
             print(f'Piece Length: {decoded_val[b'info'][b'piece length']}')
             print(f'Piece Hashes:')
-            piece_hashes_as_str = '\n'.join(decoded_val[b'info'][b'pieces'])
-            print(piece_hashes_as_str)
+            for piece_hash_val in decoded_val[b'info'][b'pieces']:
+                print(piece_hash_val)
     else:
         raise NotImplementedError(f"Unknown command {command}")
 
