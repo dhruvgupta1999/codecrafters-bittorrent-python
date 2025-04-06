@@ -235,9 +235,9 @@ def main():
                 Each chunk = 4 bytes IP + 2 bytes port.
                 You’ll have to split this string into 6-byte blocks and extract IP and port from each.
         """
-        bencoded_response = requests.get(tracker_url, params=params)
-        decoded_response = decode_bencode(bencoded_response)
-        peers = decoded_response[b'peers']
+        response = requests.get(tracker_url, params=params)
+        bencoded_peers = response.peers
+        peers = decode_bencode(bencoded_peers)
         IP_PORT_CHUNK_SIZE_BYTES = 6
         for i in range(0, len(peers), IP_PORT_CHUNK_SIZE_BYTES):
             ip_bytes, port_bytes = peers[i:i+4], peers[i+4:i+IP_PORT_CHUNK_SIZE_BYTES]
