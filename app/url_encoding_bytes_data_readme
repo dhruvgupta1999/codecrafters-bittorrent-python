@@ -1,0 +1,15 @@
+Let's say the hexadecimal representation of our info hash is d69f91e6b2ae4c542468d1073a71d4ea13879a7f
+This 40 character long string was representing 20 bytes, so each character pair corresponds to a byte
+We can just put a % before each byte so the URL-encoded representation would be:
+# %d6%9f%91%e6%b2%ae%4c%54%24%68%d1%07%3a%71%d4%ea%13%87%9a%7f
+
+This works, but there's a more efficient way of doing it:
+URL encoding specifies a set of unreserved characters: (0-9, A-Z, a-z, hypen, underscore, full stop, tilda)
+that have no special meaning in URLs.
+If our hex value corresponds to an unreserved character, we don't need to use url encoding for it
+In our info hash, four values correspond to unreserved characters if you look at the ASCII chart:
+0x4c is L, 0x54 is T, 0x68 is h and 0x71 is q
+
+So instead of %4c, we can use L, similarly instead of %54, we can use T etc. to have a shorter string
+This way, the URL encoded value for our info hash would be 52 characters long instead of 60:
+# %d6%9f%91%e6%b2%aeLT%24h%d1%07%3aq%d4%ea%13%87%9a%7f

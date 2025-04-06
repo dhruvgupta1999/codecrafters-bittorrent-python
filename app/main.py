@@ -173,51 +173,112 @@ def main():
         # Convert bytes type to str type.
         print(json.dumps(bytes_to_str(decode_bencode(bencoded_value)), default=bytes_to_str))
     elif command == 'info':
+        # Test this part using: python main.py info "C:\Users\Dhruv Gupta\codekrafter\tor\sample.torrent"
         tor_file_path = sys.argv[2]
-        bencoded_value = b''
-        with open(tor_file_path, 'rb') as tor_file:
-            """
-            Tor file format
-            
-            contains a bencoded dictionary with the following keys and values:
-            
-            announce:
-            URL to a "tracker", which is a central server that keeps track of peers participating in the sharing of a torrent.
-            
-            info:
-            A dictionary with keys:
-            - length: size of the file in bytes, for single-file torrents
-            - name: suggested name to save the file / directory as
-            - piece length: number of bytes in each piece
-            - pieces: concatenated SHA-1 hashes of each piece as a string.
-                        Each hash is 20 bytes long.
-            """
-            bencoded_value = tor_file.read()
-            logging.info(f'tor file datatype: {type(bencoded_value)}')
-            logging.info(f'tor file data as str: {str(bencoded_value)}')
-            decoded_val = decode_bencode(bencoded_value)
-            logging.info(f"decoded tor file: {decoded_val}")
-            # The 'announce' field has the tracker url.
-            print(f'Tracker URL: {decoded_val[b'announce'].decode()}')
-            print(f'Length: {decoded_val[b'info'][b'length']}')
-            # Check x = inv_f(f(x))
-            assert decoded_val[b'info'] == decode_bencode(bencode_data(decoded_val[b'info']))
-            print(f'Info Hash: {get_info_sha_hash(decoded_val[b'info'])}')
-            print(f'Piece Length: {decoded_val[b'info'][b'piece length']}')
-            print(f'Piece Hashes:')
+        bencoded_value = _read_tor_file(tor_file_path)
+        decoded_val = decode_bencode(bencoded_value)
+        logging.info(f"decoded tor file: {decoded_val}")
+        # The 'announce' field has the tracker url.
+        print(f'Tracker URL: {decoded_val[b'announce'].decode()}')
+        print(f'Length: {decoded_val[b'info'][b'length']}')
+        # Check x = inverse_f(f(x))
+        assert decoded_val[b'info'] == decode_bencode(bencode_data(decoded_val[b'info']))
+        print(f'Info Hash: {get_info_sha_hash(decoded_val[b'info'])}')
+        print(f'Piece Length: {decoded_val[b'info'][b'piece length']}')
+        print(f'Piece Hashes:')
 
-            piece_hashes = []
-            concat_hashes = decoded_val[b'info'][b'pieces']
-            for i in range(0, len(concat_hashes), PIECE_HASH_LEN_BYTES):
-                # Convert the 20 bytes to hexstring form to get the SHA hash in human readable form.
-                sha_hash_as_hex = ''.join('{:02x}'.format(x) for x in concat_hashes[i:i+PIECE_HASH_LEN_BYTES])
-                piece_hashes.append(sha_hash_as_hex)
+        piece_hashes = []
+        concat_hashes = decoded_val[b'info'][b'pieces']
+        for i in range(0, len(concat_hashes), PIECE_HASH_LEN_BYTES):
+            # Convert the 20 bytes to hexstring form to get the SHA hash in human readable form.
+            # Basically, each byte is converted one by one to a two digit hex. and all the hex values are concated.
+            sha_hash_as_hex = ''.join('{:02x}'.format(x) for x in concat_hashes[i:i+PIECE_HASH_LEN_BYTES])
+            piece_hashes.append(sha_hash_as_hex)
 
-            print('\n'.join(piece_hashes))
+        print('\n'.join(piece_hashes))
+    elif command == 'peers':
+        tor_file_path = sys.argv[2]
+        bencoded_value = _read_tor_file(tor_file_path)
+        decoded_val = decode_bencode(bencoded_value)
+        logging.info(f"decoded tor file: {decoded_val}")
+
+        # Send a GET request with TOR file data.
+        # The tracker which is a central node, will give you a peers list with the data.
+        # explanation of what we are doing here: https://chatgpt.com/share/67f23bf1-5d84-8003-a390-81ed30e346fb
+        import requests
+
+        # See: \tor\app\url_encoding_bytes_data_readme for more on how bytes data is url encoded for GET request.
+
+        tracker_url = decoded_val[b'announce'].decode()
+        params = {
+            # requests module will automatically handle the url encoding for the hash.
+            "info_hash": get_info_sha_hash(decoded_val[b'info']),
+            "peer_id": _get_peer_id(),
+            "port": 6881,
+            # I haven't uploaded anything
+            "uploaded": 0,
+            # you haven’t downloaded anything yet
+            "downloaded": 0,
+            # Set this to the total file size
+            "left": decoded_val[b'info'][b'length'],
+            # means "give me a compact list of peers"
+            "compact": 1
+        }
+
+        """
+        Tracker response:
+        
+        The response will be a bencoded dictionary. It will have:
+
+        interval: You can ignore this.
+        peers:  A string of multiple 6-byte chunks.
+                Each chunk = 4 bytes IP + 2 bytes port.
+                You’ll have to split this string into 6-byte blocks and extract IP and port from each.
+        """
+        bencoded_response = requests.get(tracker_url, params=params)
+        decoded_response = decode_bencode(bencoded_response)
+        peers = decoded_response[b'peers']
+        IP_PORT_CHUNK_SIZE_BYTES = 6
+        for i in range(0, len(peers), IP_PORT_CHUNK_SIZE_BYTES):
+            ip_bytes, port_bytes = peers[i:i+4], peers[i+4:i+IP_PORT_CHUNK_SIZE_BYTES]
+            # If IP bytes are 165 24 59 123 => 165.24.59.123
+            ip_str = '.'.join(':d'.format(b) for b in ip_bytes)
+            port_str = ''.join(':d'.format(b) for b in port_bytes)
+            print(f'{ip_str}:{port_str}')
+
+
+
+
 
     else:
         raise NotImplementedError(f"Unknown command {command}")
 
+
+def _read_tor_file(tor_file_path):
+    with open(tor_file_path, 'rb') as tor_file:
+        """
+        Tor file format
+        
+        contains a bencoded dictionary with the following keys and values:
+        
+        announce:
+        URL to a "tracker", which is a central server that keeps track of peers participating in the sharing of a torrent.
+        
+        info:
+        A dictionary with keys:
+        - length: size of the file in bytes, for single-file torrents
+        - name: suggested name to save the file / directory as
+        - piece length: number of bytes in each piece
+        - pieces: concatenated SHA-1 hashes of each piece as a string.
+                    Each hash is 20 bytes long.
+        """
+        bencoded_value = tor_file.read()
+        logging.info(f'tor file datatype: {type(bencoded_value)}')
+        logging.info(f'tor file data as str: {str(bencoded_value)}')
+    return bencoded_value
+
+def _get_peer_id():
+    return ['a'] * 20
 
 if __name__ == "__main__":
     main()
