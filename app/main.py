@@ -10,6 +10,7 @@ logging.basicConfig(level=logging.INFO)
 # import bencodepy - available if you need it!
 # import requests - available if you need it!
 
+PIECE_HASH_LEN_BYTES = 20
 
 def bencode_data(my_data: Any) -> bytes:
     """
@@ -188,7 +189,8 @@ def main():
             - length: size of the file in bytes, for single-file torrents
             - name: suggested name to save the file / directory as
             - piece length: number of bytes in each piece
-            - pieces: concatenated SHA-1 hashes of each piece
+            - pieces: concatenated SHA-1 hashes of each piece as a string.
+                        Each hash is 20 bytes long.
             """
             bencoded_value = tor_file.read()
             logging.info(f'tor file datatype: {type(bencoded_value)}')
@@ -203,8 +205,16 @@ def main():
             print(f'Info Hash: {get_info_sha_hash(decoded_val[b'info'])}')
             print(f'Piece Length: {decoded_val[b'info'][b'piece length']}')
             print(f'Piece Hashes:')
-            for piece_hash_val in decoded_val[b'info'][b'pieces']:
-                print(piece_hash_val)
+
+            piece_hashes = []
+            concat_hashes = decoded_val[b'info'][b'pieces']
+            for i in range(0, len(concat_hashes), PIECE_HASH_LEN_BYTES):
+                # Convert the 20 bytes to hexstring form to get the SHA hash in human readable form.
+                sha_hash_as_hex = ''.join('{:02x}'.format(x) for x in concat_hashes[i:i+PIECE_HASH_LEN_BYTES])
+                piece_hashes.append(sha_hash_as_hex)
+
+            print('\n'.join(sha_hash_as_hex))
+
     else:
         raise NotImplementedError(f"Unknown command {command}")
 
