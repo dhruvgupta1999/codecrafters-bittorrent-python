@@ -213,7 +213,7 @@ def main():
                 sha_hash_as_hex = ''.join('{:02x}'.format(x) for x in concat_hashes[i:i+PIECE_HASH_LEN_BYTES])
                 piece_hashes.append(sha_hash_as_hex)
 
-            print('\n'.join(sha_hash_as_hex))
+            print('\n'.join(piece_hashes))
 
     else:
         raise NotImplementedError(f"Unknown command {command}")
