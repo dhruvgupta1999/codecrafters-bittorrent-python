@@ -240,6 +240,7 @@ def main():
         becoded_response_content = response.content
 
         decoded_content = decode_bencode(becoded_response_content)
+        logging.info(f"decoded content: {decoded_content}")
         peers = decoded_content[b'peers']
         IP_PORT_CHUNK_SIZE_BYTES = 6
         for i in range(0, len(peers), IP_PORT_CHUNK_SIZE_BYTES):
