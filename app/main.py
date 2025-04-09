@@ -47,9 +47,13 @@ def bencode_data(my_data: Any) -> bytes:
     raise TypeError(f"Unexpected type of param: {my_data} of type {type(my_data)}")
 
 
-def get_info_sha_hash(info: dict):
+def get_info_sha_hash(info: dict, as_hexadecimal=False):
     bencoded_info = bencode_data(info)
-    sha1_hash = hashlib.sha1(bencoded_info).hexdigest()
+    if as_hexadecimal:
+        sha1_hash = hashlib.sha1(bencoded_info).hexdigest()
+    else:
+        # Return as bytes
+        sha1_hash = hashlib.sha1(bencoded_info).digest()
     return sha1_hash
 
 
@@ -183,7 +187,7 @@ def main():
         print(f'Length: {decoded_val[b'info'][b'length']}')
         # Check x = inverse_f(f(x))
         assert decoded_val[b'info'] == decode_bencode(bencode_data(decoded_val[b'info']))
-        print(f'Info Hash: {get_info_sha_hash(decoded_val[b'info'])}')
+        print(f'Info Hash: {get_info_sha_hash(decoded_val[b'info'], as_hexadecimal=True)}')
         print(f'Piece Length: {decoded_val[b'info'][b'piece length']}')
         print(f'Piece Hashes:')
 
@@ -211,7 +215,8 @@ def main():
 
         tracker_url = decoded_val[b'announce'].decode()
         params = {
-            # requests module will automatically handle the url encoding for the hash.
+            # requests module will automatically handle the url encoding for the info hash bytes.
+            # Send only the info hash as ben
             "info_hash": get_info_sha_hash(decoded_val[b'info']),
             "peer_id": _get_peer_id(),
             "port": 6881,
