@@ -246,10 +246,6 @@ def main():
             port_str = ''.join(':d'.format(b) for b in port_bytes)
             print(f'{ip_str}:{port_str}')
 
-
-
-
-
     else:
         raise NotImplementedError(f"Unknown command {command}")
 
