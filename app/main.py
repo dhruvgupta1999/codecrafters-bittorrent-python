@@ -155,7 +155,7 @@ def main():
 
     if command == "decode":
         # DO NOT CHANGE THIS PART. IT REPRESENTS A BINARY STRING COMING FROM A N/W CONNECTION.
-        bencoded_value = sys.argv[2].encode()
+        bencoded_val = sys.argv[2].encode()
 
         # json.dumps() can't handle bytes, but bencoded "strings" need to be
         # bytestrings since they might contain non utf-8 characters.
@@ -175,24 +175,24 @@ def main():
             raise TypeError(f"Type not serializable: {type(data)}")
 
         # Convert bytes type to str type.
-        print(json.dumps(bytes_to_str(decode_bencode(bencoded_value)), default=bytes_to_str))
+        print(json.dumps(bytes_to_str(decode_bencode(bencoded_val)), default=bytes_to_str))
     elif command == 'info':
         # Test this part using: python main.py info "C:\Users\Dhruv Gupta\codekrafter\tor\sample.torrent"
         tor_file_path = sys.argv[2]
-        bencoded_value = _read_tor_file(tor_file_path)
-        decoded_val = decode_bencode(bencoded_value)
-        logging.info(f"decoded tor file: {decoded_val}")
+        bencoded_tor_file = _read_tor_file(tor_file_path)
+        decoded_tor_file = decode_bencode(bencoded_tor_file)
+        logging.info(f"decoded tor file: {decoded_tor_file}")
         # The 'announce' field has the tracker url.
-        print(f'Tracker URL: {decoded_val[b'announce'].decode()}')
-        print(f'Length: {decoded_val[b'info'][b'length']}')
+        print(f'Tracker URL: {decoded_tor_file[b'announce'].decode()}')
+        print(f'Length: {decoded_tor_file[b'info'][b'length']}')
         # Check x = inverse_f(f(x))
-        assert decoded_val[b'info'] == decode_bencode(bencode_data(decoded_val[b'info']))
-        print(f'Info Hash: {get_info_sha_hash(decoded_val[b'info'], as_hexadecimal=True)}')
-        print(f'Piece Length: {decoded_val[b'info'][b'piece length']}')
+        assert decoded_tor_file[b'info'] == decode_bencode(bencode_data(decoded_tor_file[b'info']))
+        print(f'Info Hash: {get_info_sha_hash(decoded_tor_file[b'info'], as_hexadecimal=True)}')
+        print(f'Piece Length: {decoded_tor_file[b'info'][b'piece length']}')
         print(f'Piece Hashes:')
 
         piece_hashes = []
-        concat_hashes = decoded_val[b'info'][b'pieces']
+        concat_hashes = decoded_tor_file[b'info'][b'pieces']
         for i in range(0, len(concat_hashes), PIECE_HASH_LEN_BYTES):
             # Convert the 20 bytes to hexstring form to get the SHA hash in human readable form.
             # Basically, each byte is converted one by one to a two digit hex. and all the hex values are concated.
@@ -202,45 +202,11 @@ def main():
         print('\n'.join(piece_hashes))
     elif command == 'peers':
         tor_file_path = sys.argv[2]
-        bencoded_value = _read_tor_file(tor_file_path)
-        decoded_val = decode_bencode(bencoded_value)
-        logging.info(f"decoded tor file: {decoded_val}")
+        bencoded_tor_file = _read_tor_file(tor_file_path)
+        decoded_tor_file = decode_bencode(bencoded_tor_file)
+        logging.info(f"decoded tor file: {decoded_tor_file}")
 
-        # Send a GET request with TOR file data.
-        # The tracker which is a central node, will give you a peers list with the data.
-        # explanation of what we are doing here: https://chatgpt.com/share/67f23bf1-5d84-8003-a390-81ed30e346fb
-        import requests
-
-        # See: \tor\app\url_encoding_bytes_data_readme for more on how bytes data is url encoded for GET request.
-
-        tracker_url = decoded_val[b'announce'].decode()
-        params = {
-            # requests module will automatically handle the url encoding for the info hash bytes.
-            # Send only the info hash as ben
-            "info_hash": get_info_sha_hash(decoded_val[b'info']),
-            "peer_id": _get_peer_id(),
-            "port": 6881,
-            # I haven't uploaded anything
-            "uploaded": 0,
-            # you haven’t downloaded anything yet
-            "downloaded": 0,
-            # Set this to the total file size
-            "left": decoded_val[b'info'][b'length'],
-            # means "give me a compact list of peers"
-            "compact": 1
-        }
-
-        """
-        Tracker response:
-        
-        The response will be a bencoded dictionary. It will have:
-
-        interval: You can ignore this.
-        peers:  A string of multiple 6-byte chunks.
-                Each chunk = 4 bytes IP + 2 bytes port.
-                You’ll have to split this string into 6-byte blocks and extract IP and port from each.
-        """
-        response = requests.get(tracker_url, params=params)
+        response = _send_get_request_to_tracker(decoded_tor_file)
         logging.info(f"response status code: {response.status_code}")
         becoded_response_content = response.content
 
@@ -257,6 +223,44 @@ def main():
 
     else:
         raise NotImplementedError(f"Unknown command {command}")
+
+
+def _send_get_request_to_tracker(decoded_val):
+    """
+    # Send a GET request with TOR file data.
+    # The tracker which is a central node, will give you a peers list with the data.
+    # explanation of what we are doing here: https://chatgpt.com/share/67f23bf1-5d84-8003-a390-81ed30e346fb
+    # See: \tor\app\url_encoding_bytes_data_readme for more on how bytes data is url encoded for GET request.
+
+    Tracker response:
+
+    The response will be a bencoded dictionary. It will have:
+
+    interval: You can ignore this.
+    peers:  A string of multiple 6-byte chunks.
+            Each chunk = 4 bytes IP + 2 bytes port.
+            You’ll have to split this string into 6-byte blocks and extract IP and port from each.
+    """
+    import requests
+
+    tracker_url = decoded_val[b'announce'].decode()
+    params = {
+        # requests module will automatically handle the url encoding for the info hash bytes.
+        # Send only the info hash as ben
+        "info_hash": get_info_sha_hash(decoded_val[b'info']),
+        "peer_id": _get_peer_id(),
+        "port": 6881,
+        # I haven't uploaded anything
+        "uploaded": 0,
+        # you haven’t downloaded anything yet
+        "downloaded": 0,
+        # Set this to the total file size
+        "left": decoded_val[b'info'][b'length'],
+        # means "give me a compact list of peers"
+        "compact": 1
+    }
+    response = requests.get(tracker_url, params=params)
+    return response
 
 
 def _read_tor_file(tor_file_path):
