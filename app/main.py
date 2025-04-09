@@ -278,7 +278,7 @@ def _read_tor_file(tor_file_path):
     return bencoded_value
 
 def _get_peer_id():
-    return ['a'] * 20
+    return 'a' * 20
 
 if __name__ == "__main__":
     main()
