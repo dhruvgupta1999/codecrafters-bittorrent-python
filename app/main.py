@@ -230,7 +230,7 @@ def _send_get_request_to_tracker(decoded_val):
     # Send a GET request with TOR file data.
     # The tracker which is a central node, will give you a peers list with the data.
     # explanation of what we are doing here: https://chatgpt.com/share/67f23bf1-5d84-8003-a390-81ed30e346fb
-    # See: \tor\app\url_encoding_bytes_data_readme for more on how bytes data is url encoded for GET request.
+
 
     Tracker response:
 
@@ -241,6 +241,7 @@ def _send_get_request_to_tracker(decoded_val):
             Each chunk = 4 bytes IP + 2 bytes port.
             You’ll have to split this string into 6-byte blocks and extract IP and port from each.
     """
+    # See: \tor\app\url_encoding_bytes_data_readme for more on how bytes data is url encoded for GET request.
     import requests
 
     tracker_url = decoded_val[b'announce'].decode()
