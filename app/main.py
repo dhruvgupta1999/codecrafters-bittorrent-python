@@ -236,8 +236,11 @@ def main():
                 You’ll have to split this string into 6-byte blocks and extract IP and port from each.
         """
         response = requests.get(tracker_url, params=params)
-        bencoded_peers = response.peers
-        peers = decode_bencode(bencoded_peers)
+        logging.info(f"response status code: {response.status_code}")
+        becoded_response_content = response.content
+
+        decoded_content = decode_bencode(becoded_response_content)
+        peers = decoded_content[b'peers']
         IP_PORT_CHUNK_SIZE_BYTES = 6
         for i in range(0, len(peers), IP_PORT_CHUNK_SIZE_BYTES):
             ip_bytes, port_bytes = peers[i:i+4], peers[i+4:i+IP_PORT_CHUNK_SIZE_BYTES]
