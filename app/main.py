@@ -251,8 +251,8 @@ def main():
         for i in range(0, len(peers), IP_PORT_CHUNK_SIZE_BYTES):
             ip_bytes, port_bytes = peers[i:i+4], peers[i+4:i+IP_PORT_CHUNK_SIZE_BYTES]
             # If IP bytes are 165 24 59 123 => 165.24.59.123
-            ip_str = '.'.join(':d'.format(b) for b in ip_bytes)
-            port_str = ''.join(':d'.format(b) for b in port_bytes)
+            ip_str = '.'.join(f'{b:d}' for b in ip_bytes)
+            port_str = ''.join(f'{b:d}' for b in port_bytes)
             print(f'{ip_str}:{port_str}')
 
     else:
