@@ -346,8 +346,10 @@ def _read_tor_file(tor_file_path):
         logging.info(f'tor file data as str: {str(bencoded_value)}')
     return bencoded_value
 
-def _get_peer_id():
+def _get_peer_id(as_bytes=False):
     # This is the peer id of my machine.
+    if as_bytes:
+        return b'a' * 20
     return 'a' * 20
 
 if __name__ == "__main__":
