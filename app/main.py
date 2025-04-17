@@ -50,9 +50,10 @@ def bencode_data(my_data: Any) -> bytes:
 def get_info_sha_hash(info: dict, as_hexadecimal=False):
     bencoded_info = bencode_data(info)
     if as_hexadecimal:
+        # 40 hexdigits, as 1 hexdigit is 4 bits.
         sha1_hash = hashlib.sha1(bencoded_info).hexdigest()
     else:
-        # Return as bytes
+        # Return as bytes (20 bytes)
         sha1_hash = hashlib.sha1(bencoded_info).digest()
     return sha1_hash
 
@@ -221,6 +222,64 @@ def main():
             port_number = int.from_bytes(port_bytes, byteorder='big')
             print(f'{ip_str}:{port_number}')
 
+    elif command == 'handshake':
+        # """
+        # Input command:
+        # /your_bittorrent.sh handshake sample.torrent <peer_ip>:<peer_port>
+        #
+        #
+        # """
+        tor_file_path = sys.argv[2]
+        peer_info = sys.argv[3]
+
+        bencoded_tor_file = _read_tor_file(tor_file_path)
+        decoded_tor_file = decode_bencode(bencoded_tor_file)
+        logging.info(f"decoded tor file: {decoded_tor_file}")
+        sha_hash_as_bytes = get_info_sha_hash(decoded_tor_file[b'info'])
+
+
+        peer_ip, peer_port = peer_info.split(':')
+        import socket
+
+        # Create a TCP/IP socket
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+        # Connect to the server (this does the TCP handshake)
+        server_address = (peer_ip, int(peer_port))
+        client_socket.connect(server_address)
+
+        try:
+            """
+            The handshake is a message consisting of the following parts as described in the peer protocol:
+
+            -length of the protocol string (BitTorrent protocol) which is 19 (1 byte)
+            -the string BitTorrent protocol (19 bytes)
+            -eight reserved bytes, which are all set to zero (8 bytes)
+            -sha1 infohash (20 bytes) (NOT the hexadecimal representation, which is 40 bytes long)
+            -peer id (20 bytes) (generate 20 random byte values)
+            """
+            # Send a message after handshake
+            len_protocol_str = 19
+            message = len_protocol_str.to_bytes(1, byteorder='big')
+            message += b'BitTorrent protocol'
+            my_zero = 0
+            # 8 empty bytes
+            message += my_zero.to_bytes(8)
+            message += sha_hash_as_bytes
+            message += _get_peer_id()
+            client_socket.sendall(message)
+
+            # Receive a response similar to the above from peer.
+            peer_handshake_data = client_socket.recv(1024)
+            # last 20 bytes of the peer_handshake_data represents the peer id.
+            server_peer_id = peer_handshake_data[-20:]
+            # Print the server peer id as hexadecimal.
+            print(f"Peer ID: {server_peer_id.hex()}")
+
+        finally:
+            client_socket.close()
+
+
     else:
         raise NotImplementedError(f"Unknown command {command}")
 
@@ -288,6 +347,7 @@ def _read_tor_file(tor_file_path):
     return bencoded_value
 
 def _get_peer_id():
+    # This is the peer id of my machine.
     return 'a' * 20
 
 if __name__ == "__main__":
