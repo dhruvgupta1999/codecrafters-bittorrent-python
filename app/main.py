@@ -308,7 +308,7 @@ def _send_get_request_to_tracker(decoded_val):
         # requests module will automatically handle the url encoding for the info hash bytes.
         # Send only the info hash as ben
         "info_hash": get_info_sha_hash(decoded_val[b'info']),
-        "peer_id": _get_peer_id(),
+        "peer_id": _get_peer_id(as_bytes=True),
         "port": 6881,
         # I haven't uploaded anything
         "uploaded": 0,
