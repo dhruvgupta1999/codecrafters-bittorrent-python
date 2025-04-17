@@ -266,7 +266,7 @@ def main():
             # 8 empty bytes
             message += my_zero.to_bytes(8)
             message += sha_hash_as_bytes
-            message += _get_peer_id()
+            message += _get_peer_id(as_bytes=True)
             client_socket.sendall(message)
 
             # Receive a response similar to the above from peer.
@@ -308,7 +308,7 @@ def _send_get_request_to_tracker(decoded_val):
         # requests module will automatically handle the url encoding for the info hash bytes.
         # Send only the info hash as ben
         "info_hash": get_info_sha_hash(decoded_val[b'info']),
-        "peer_id": _get_peer_id(as_bytes=True),
+        "peer_id": _get_peer_id(),
         "port": 6881,
         # I haven't uploaded anything
         "uploaded": 0,
