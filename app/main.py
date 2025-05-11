@@ -378,9 +378,10 @@ def main():
             assert msg_type == 1
             # Send request messages and receive 16kB blocks of the piece, till the piece is received completely.
             remaining_bytes_piece = piece_length
-            BLOCK_SIZE = int(2^14)
+            BLOCK_SIZE = int(2**14)
             block_offset = 0
             while remaining_bytes_piece > 0:
+                logging.info(f"{remaining_bytes_piece=}")
                 REQUEST = 6
                 block_len_to_downld = int(min(BLOCK_SIZE, remaining_bytes_piece))
                 remaining_bytes_piece -= block_len_to_downld
