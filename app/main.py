@@ -413,6 +413,7 @@ def _recv_peer_msg(client_socket):
     Since the payload can be atmost 16KiloBytes, I took another 1KiB as buffer.
     """
     data = client_socket.recv(17 * 1024)
+    logging.info(f"received data prefix: {data[:5]}")
     msg_len = int.from_bytes(data[:4], byteorder='big')
     msg_type = int.from_bytes(data[4:5], byteorder='big')
     payload = data[5:msg_len+4]
