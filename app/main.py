@@ -334,7 +334,7 @@ def main():
         decoded_tor_file = decode_bencode(bencoded_tor_file)
         logging.info(f"decoded tor file: {decoded_tor_file}")
         sha_hash_as_bytes = get_info_sha_hash(decoded_tor_file[b'info'])
-        piece_length = decoded_tor_file[b'piece length']
+        piece_length = decoded_tor_file[b'info'][b'piece length']
 
         # Get peers from tracker
         response = _send_get_request_to_tracker(decoded_tor_file)
