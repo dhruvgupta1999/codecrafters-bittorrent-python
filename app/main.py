@@ -47,16 +47,6 @@ def bencode_data(my_data: Any) -> bytes:
     raise TypeError(f"Unexpected type of param: {my_data} of type {type(my_data)}")
 
 
-def get_info_sha_hash(info: dict, as_hexadecimal=False):
-    bencoded_info = bencode_data(info)
-    if as_hexadecimal:
-        # 40 hexdigits, as 1 hexdigit is 4 bits.
-        sha1_hash = hashlib.sha1(bencoded_info).hexdigest()
-    else:
-        # Return as bytes (20 bytes)
-        sha1_hash = hashlib.sha1(bencoded_info).digest()
-    return sha1_hash
-
 
 def _find_cur_element_end(elem_str):
     # find next 'e' which indicates END of current element only.
@@ -146,6 +136,87 @@ def _decode_bencode(bencoded_value: bytes, _is_list=False, _is_dict=False) -> tu
 
 def decode_bencode(bencoded_value: bytes):
     return _decode_bencode(bencoded_value)[0]
+
+
+def get_info_sha_hash(info: dict, as_hexadecimal=False):
+    bencoded_info = bencode_data(info)
+    if as_hexadecimal:
+        # 40 hexdigits, as 1 hexdigit is 4 bits.
+        sha1_hash = hashlib.sha1(bencoded_info).hexdigest()
+    else:
+        # Return as bytes (20 bytes)
+        sha1_hash = hashlib.sha1(bencoded_info).digest()
+    return sha1_hash
+
+
+def _send_get_request_to_tracker(decoded_val):
+    """
+    # Send a GET request with TOR file data.
+    # The tracker which is a central node, will give you a peers list with the data.
+    # explanation of what we are doing here: https://chatgpt.com/share/67f23bf1-5d84-8003-a390-81ed30e346fb
+
+
+    Tracker response:
+
+    The response will be a bencoded dictionary. It will have:
+
+    interval: You can ignore this.
+    peers:  A string of multiple 6-byte chunks.
+            Each chunk = 4 bytes IP + 2 bytes port.
+            You’ll have to split this string into 6-byte blocks and extract IP and port from each.
+    """
+    # See: \tor\app\url_encoding_bytes_data_readme for more on how bytes data is url encoded for GET request.
+    import requests
+
+    tracker_url = decoded_val[b'announce'].decode()
+    params = {
+        # requests module will automatically handle the url encoding for the info hash bytes.
+        # Send only the info hash as ben
+        "info_hash": get_info_sha_hash(decoded_val[b'info']),
+        "peer_id": _get_peer_id(),
+        "port": 6881,
+        # I haven't uploaded anything
+        "uploaded": 0,
+        # you haven’t downloaded anything yet
+        "downloaded": 0,
+        # Set this to the total file size
+        "left": decoded_val[b'info'][b'length'],
+        # means "give me a compact list of peers"
+        "compact": 1
+    }
+    response = requests.get(tracker_url, params=params)
+    return response
+
+
+def _read_tor_file(tor_file_path):
+    with open(tor_file_path, 'rb') as tor_file:
+        """
+        Tor file format
+        
+        contains a bencoded dictionary with the following keys and values:
+        
+        announce:
+        URL to a "tracker", which is a central server that keeps track of peers participating in the sharing of a torrent.
+        
+        info:
+        A dictionary with keys:
+        - length: size of the file in bytes, for single-file torrents
+        - name: suggested name to save the file / directory as
+        - piece length: number of bytes in each piece
+        - pieces: concatenated SHA-1 hashes of each piece as a string.
+                    Each hash is 20 bytes long.
+        """
+        bencoded_value = tor_file.read()
+        logging.info(f'tor file datatype: {type(bencoded_value)}')
+        logging.info(f'tor file data as str: {str(bencoded_value)}')
+    return bencoded_value
+
+def _get_peer_id(as_bytes=False):
+    # This is the peer id of my machine.
+    if as_bytes:
+        return b'a' * 20
+    return 'a' * 20
+
 
 
 def main():
@@ -246,111 +317,146 @@ def main():
 
         # Connect to the server (this does the TCP handshake)
         server_address = (peer_ip, int(peer_port))
-        client_socket.connect(server_address)
-
         try:
-            """
-            The handshake is a message consisting of the following parts as described in the peer protocol:
-
-            -length of the protocol string (BitTorrent protocol) which is 19 (1 byte)
-            -the string BitTorrent protocol (19 bytes)
-            -eight reserved bytes, which are all set to zero (8 bytes)
-            -sha1 infohash (20 bytes) (NOT the hexadecimal representation, which is 40 bytes long)
-            -peer id (20 bytes) (generate 20 random byte values)
-            """
-            # Send a message after handshake
-            len_protocol_str = 19
-            message = len_protocol_str.to_bytes(1, byteorder='big')
-            message += b'BitTorrent protocol'
-            my_zero = 0
-            # 8 empty bytes
-            message += my_zero.to_bytes(8)
-            message += sha_hash_as_bytes
-            message += _get_peer_id(as_bytes=True)
-            client_socket.sendall(message)
-
-            # Receive a response similar to the above from peer.
-            peer_handshake_data = client_socket.recv(1024)
-            # last 20 bytes of the peer_handshake_data represents the peer id.
-            server_peer_id = peer_handshake_data[-20:]
-            # Print the server peer id as hexadecimal.
-            print(f"Peer ID: {server_peer_id.hex()}")
-
+            client_socket.connect(server_address)
+            _handshake_with_peer(client_socket, sha_hash_as_bytes)
         finally:
             client_socket.close()
+
+    elif command == 'download_piece':
+        """
+        $ ./your_program.sh download_piece -o /tmp/test-piece sample.torrent <piece_index>
+        """
+        piece_download_file_path = sys.argv[3]
+        tor_file_path = sys.argv[4]
+        piece_index = int(sys.argv[5])
+        bencoded_tor_file = _read_tor_file(tor_file_path)
+        decoded_tor_file = decode_bencode(bencoded_tor_file)
+        logging.info(f"decoded tor file: {decoded_tor_file}")
+        sha_hash_as_bytes = get_info_sha_hash(decoded_tor_file[b'info'])
+        piece_length = decoded_tor_file[b'piece length']
+
+        # Get peers from tracker
+        response = _send_get_request_to_tracker(decoded_tor_file)
+        logging.info(f"response status code: {response.status_code}")
+        becoded_response_content = response.content
+
+        decoded_content = decode_bencode(becoded_response_content)
+        logging.info(f"decoded content: {decoded_content}")
+        peers = decoded_content[b'peers']
+        peer_ips = []
+        IP_PORT_CHUNK_SIZE_BYTES = 6
+        for i in range(0, len(peers), IP_PORT_CHUNK_SIZE_BYTES):
+            ip_bytes, port_bytes = peers[i:i + 4], peers[i + 4:i + IP_PORT_CHUNK_SIZE_BYTES]
+            # If IP bytes are 165 24 59 123 => 165.24.59.123
+            ip_str = '.'.join(f'{b:d}' for b in ip_bytes)
+            port_number = int.from_bytes(port_bytes, byteorder='big')
+            peer_ips.append((ip_str, port_number))
+            logging.info(f'{ip_str}:{port_number}')
+
+        # Handshake with a peer
+        import socket
+
+        # Create a TCP/IP socket
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+        # Connect to the server (this does the TCP handshake)
+        # Here I just picked the first peer among list of peers (because every peer has every piece in this challenge).
+        server_address = peer_ips[0]
+        try:
+            client_socket.connect(server_address)
+            _handshake_with_peer(client_socket, sha_hash_as_bytes)
+            # Wait for a bitfield message from the peer indicating which pieces it has
+            # For this challenge, the assumption is that every peer has every piece.
+            msg_type, payload = _recv_peer_msg(client_socket)
+            assert msg_type == 5
+            # Send interested msg
+            INTERESTED = 2
+            _send_peer_msg(client_socket, msg_type=INTERESTED, payload=b'')
+            # Wait for unchoke msg
+            msg_type, payload = _recv_peer_msg(client_socket)
+            assert msg_type == 1
+            # Send request messages and receive 16kB blocks of the piece, till the piece is received completely.
+            remaining_bytes_piece = piece_length
+            BLOCK_SIZE = int(2^14)
+            block_offset = 0
+            while remaining_bytes_piece > 0:
+                REQUEST = 6
+                block_len_to_downld = int(min(BLOCK_SIZE, remaining_bytes_piece))
+                remaining_bytes_piece -= block_len_to_downld
+                payload = (piece_index.to_bytes(length=4) + block_offset.to_bytes(length=4) +
+                           block_len_to_downld.to_bytes(length=4))
+                _send_peer_msg(client_socket, msg_type=REQUEST, payload=payload)
+                msg_type, payload = _recv_peer_msg(client_socket)
+                assert msg_type == 7
+                with open(piece_download_file_path, 'wb') as f:
+                    # The block data starts at payload[8]
+                    f.write(payload[8:])
+        finally:
+            client_socket.close()
+
 
 
     else:
         raise NotImplementedError(f"Unknown command {command}")
 
 
-def _send_get_request_to_tracker(decoded_val):
+def _recv_peer_msg(client_socket):
     """
-    # Send a GET request with TOR file data.
-    # The tracker which is a central node, will give you a peers list with the data.
-    # explanation of what we are doing here: https://chatgpt.com/share/67f23bf1-5d84-8003-a390-81ed30e346fb
+    This is a blocking call to receive peer message from the peer.
+    Peer messages consist of a message length prefix (4 bytes),
+    message id (1 byte) and a payload (variable size).
 
-
-    Tracker response:
-
-    The response will be a bencoded dictionary. It will have:
-
-    interval: You can ignore this.
-    peers:  A string of multiple 6-byte chunks.
-            Each chunk = 4 bytes IP + 2 bytes port.
-            You’ll have to split this string into 6-byte blocks and extract IP and port from each.
+    Since the payload can be atmost 16KiloBytes, I took another 1KiB as buffer.
     """
-    # See: \tor\app\url_encoding_bytes_data_readme for more on how bytes data is url encoded for GET request.
-    import requests
+    data = client_socket.recv(17 * 1024)
+    msg_len = int.from_bytes(data[:4], byteorder='big')
+    msg_type = int.from_bytes(data[4:5], byteorder='big')
+    payload = data[5:msg_len]
+    return msg_type, payload
 
-    tracker_url = decoded_val[b'announce'].decode()
-    params = {
-        # requests module will automatically handle the url encoding for the info hash bytes.
-        # Send only the info hash as ben
-        "info_hash": get_info_sha_hash(decoded_val[b'info']),
-        "peer_id": _get_peer_id(),
-        "port": 6881,
-        # I haven't uploaded anything
-        "uploaded": 0,
-        # you haven’t downloaded anything yet
-        "downloaded": 0,
-        # Set this to the total file size
-        "left": decoded_val[b'info'][b'length'],
-        # means "give me a compact list of peers"
-        "compact": 1
-    }
-    response = requests.get(tracker_url, params=params)
-    return response
+def _send_peer_msg(client_socket, *, msg_type: int, payload: bytes):
+    """
 
 
-def _read_tor_file(tor_file_path):
-    with open(tor_file_path, 'rb') as tor_file:
-        """
-        Tor file format
-        
-        contains a bencoded dictionary with the following keys and values:
-        
-        announce:
-        URL to a "tracker", which is a central server that keeps track of peers participating in the sharing of a torrent.
-        
-        info:
-        A dictionary with keys:
-        - length: size of the file in bytes, for single-file torrents
-        - name: suggested name to save the file / directory as
-        - piece length: number of bytes in each piece
-        - pieces: concatenated SHA-1 hashes of each piece as a string.
-                    Each hash is 20 bytes long.
-        """
-        bencoded_value = tor_file.read()
-        logging.info(f'tor file datatype: {type(bencoded_value)}')
-        logging.info(f'tor file data as str: {str(bencoded_value)}')
-    return bencoded_value
+    :param client_socket:
+    :param msg_type:
+    :param payload: payload to send.
+    :return:
+    """
+    # msg_len = 1 byte for the msg_type and len(payload). The 4 bytes used for the msg_len itself are excluded.
+    msg_len = 1 + len(payload)
+    msg = msg_len.to_bytes(length=4, byteorder='big') + msg_type.to_bytes(length=1, byteorder='big') + payload
+    client_socket.sendall(msg)
 
-def _get_peer_id(as_bytes=False):
-    # This is the peer id of my machine.
-    if as_bytes:
-        return b'a' * 20
-    return 'a' * 20
+
+def _handshake_with_peer(client_socket, sha_hash_as_bytes):
+    """
+    The handshake is a message consisting of the following parts as described in the peer protocol:
+
+    -length of the protocol string (BitTorrent protocol) which is 19 (1 byte)
+    -the string BitTorrent protocol (19 bytes)
+    -eight reserved bytes, which are all set to zero (8 bytes)
+    -sha1 infohash (20 bytes) (NOT the hexadecimal representation, which is 40 bytes long)
+    -peer id (20 bytes) (generate 20 random byte values)
+    """
+    # Send a message after handshake
+    len_protocol_str = 19
+    message = len_protocol_str.to_bytes(1, byteorder='big')
+    message += b'BitTorrent protocol'
+    my_zero = 0
+    # 8 empty bytes
+    message += my_zero.to_bytes(8)
+    message += sha_hash_as_bytes
+    message += _get_peer_id(as_bytes=True)
+    client_socket.sendall(message)
+    # Receive a response similar to the above from peer.
+    peer_handshake_data = client_socket.recv(1024)
+    # last 20 bytes of the peer_handshake_data represents the peer id.
+    server_peer_id = peer_handshake_data[-20:]
+    # Print the server peer id as hexadecimal.
+    print(f"Peer ID: {server_peer_id.hex()}")
+
 
 if __name__ == "__main__":
     main()
