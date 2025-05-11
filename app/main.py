@@ -363,6 +363,9 @@ def main():
         # Connect to the server (this does the TCP handshake)
         # Here I just picked the first peer among list of peers (because every peer has every piece in this challenge).
         server_address = peer_ips[0]
+
+        INTERESTED = 2
+        REQUEST = 6
         try:
             client_socket.connect(server_address)
             _handshake_with_peer(client_socket, sha_hash_as_bytes)
@@ -371,27 +374,27 @@ def main():
             msg_type, payload = _recv_peer_msg(client_socket)
             assert msg_type == 5
             # Send interested msg
-            INTERESTED = 2
             _send_peer_msg(client_socket, msg_type=INTERESTED, payload=b'')
             # Wait for unchoke msg
             msg_type, payload = _recv_peer_msg(client_socket)
             assert msg_type == 1
             # Send request messages and receive 16kB blocks of the piece, till the piece is received completely.
-            remaining_bytes_piece = piece_length
             BLOCK_SIZE = int(2**14)
             block_offset = 0
-            while remaining_bytes_piece > 0:
-                logging.info(f"{remaining_bytes_piece=}")
-                REQUEST = 6
-                block_len_to_downld = int(min(BLOCK_SIZE, remaining_bytes_piece))
-                remaining_bytes_piece -= block_len_to_downld
+            logging.info(f"{piece_length=}")
+            while block_offset < piece_length:
+
+                logging.info(f"{block_offset=}")
+                block_len_to_downld = int(min(BLOCK_SIZE, piece_length - block_offset))
                 payload = (piece_index.to_bytes(length=4) + block_offset.to_bytes(length=4) +
                            block_len_to_downld.to_bytes(length=4))
+                block_offset += block_len_to_downld
+
                 _send_peer_msg(client_socket, msg_type=REQUEST, payload=payload)
                 msg_type, payload = _recv_peer_msg(client_socket)
                 if msg_type != 7:
                     logging.warning(f"{msg_type=} is not 7 (PIECE)")
-                with open(piece_download_file_path, 'wb') as f:
+                with open(piece_download_file_path, 'ab') as f:
                     # The block data starts at payload[8]
                     f.write(payload[8:])
         finally:
