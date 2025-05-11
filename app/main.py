@@ -408,12 +408,14 @@ def _recv_peer_msg(client_socket):
     Peer messages consist of a message length prefix (4 bytes),
     message id (1 byte) and a payload (variable size).
 
+    message length prefix excludes the 4 bytes of the prefix.
+
     Since the payload can be atmost 16KiloBytes, I took another 1KiB as buffer.
     """
     data = client_socket.recv(17 * 1024)
     msg_len = int.from_bytes(data[:4], byteorder='big')
     msg_type = int.from_bytes(data[4:5], byteorder='big')
-    payload = data[5:msg_len]
+    payload = data[5:msg_len+4]
     return msg_type, payload
 
 def _send_peer_msg(client_socket, *, msg_type: int, payload: bytes):
