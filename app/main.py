@@ -416,11 +416,20 @@ def _recv_peer_msg(client_socket):
 
     Since the payload can be atmost 16KiloBytes, I took another 1KiB as buffer.
     """
-    data = client_socket.recv(17 * 1024)
-    logging.info(f"received data prefix: {data[:5]}")
-    msg_len = int.from_bytes(data[:4], byteorder='big')
-    msg_type = int.from_bytes(data[4:5], byteorder='big')
-    payload = data[5:msg_len+4]
+    # Due to TCP chunking, we must always use recv() with the exact number of bytes that we want.
+    # Expected Message length is different from the chunk length the peer sends,
+    # this is because it is possible the peer was able to send only partial payload at a time, say 1KB at a time over TCP
+    # But the expected payload length in the message is 16KB. So we need to loop over recv(n) until we are able to
+    # read entire msg.
+    data_prefix = client_socket.recv(4)
+    msg_len = int.from_bytes(data_prefix[:4], byteorder='big')
+    logging.info(f"received {msg_len=}")
+    data = b''
+    while msg_len > 0:
+        data += client_socket.recv(msg_len)
+        msg_len -= len(data)
+    msg_type = int.from_bytes(data[:1], byteorder='big')
+    payload = data[1:]
     return msg_type, payload
 
 def _send_peer_msg(client_socket, *, msg_type: int, payload: bytes):
