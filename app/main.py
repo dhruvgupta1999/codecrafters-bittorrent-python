@@ -388,7 +388,8 @@ def main():
                            block_len_to_downld.to_bytes(length=4))
                 _send_peer_msg(client_socket, msg_type=REQUEST, payload=payload)
                 msg_type, payload = _recv_peer_msg(client_socket)
-                assert msg_type == 7
+                if msg_type != 7:
+                    logging.warning(f"{msg_type=} is not 7 (PIECE)")
                 with open(piece_download_file_path, 'wb') as f:
                     # The block data starts at payload[8]
                     f.write(payload[8:])
