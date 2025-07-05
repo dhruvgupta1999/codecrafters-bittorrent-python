@@ -1,3 +1,4 @@
+import functools
 import hashlib
 import json
 import sys
@@ -224,7 +225,7 @@ def _get_peer_id(as_bytes=False):
     return 'a' * 20
 
 
-def connect_to_peer(peer_ip, sha_hash_as_bytes):
+def connect_to_peer(sha_hash_as_bytes, peer_ip):
     """Return peer ip and the socket after tcp handshake and TOR protocol handshake."""
     # Can add a retry functionality.
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -398,8 +399,8 @@ def main():
 
         # Parallely connect to all peers.
         with ThreadPoolExecutor() as executor:
-            args = [(peer_ip, sha_hash_as_bytes) for peer_ip in peer_ips]
-            results = executor.map(connect_to_peer, args)
+            connect_to_peer_partial = functools.partial(connect_to_peer, sha_hash_as_bytes)
+            results = executor.map(connect_to_peer_partial, peer_ips)
             for peer_ip, sock in results:
                 if sock:
                     peer_ip_to_tcp_conn[peer_ip] = sock
