@@ -408,7 +408,8 @@ def main():
         logging.info(f"num peers successfully connected: {len(peer_ip_to_tcp_conn)}")
 
         # Get mapping of which piece is available on what peers.
-        piece_to_peer_ips = get_piece_to_peer_ips(peer_ip_to_tcp_conn)
+        num_pieces = get_num_pieces(decoded_tor_file)
+        piece_to_peer_ips = get_piece_to_peer_ips(peer_ip_to_tcp_conn, num_pieces)
 
         # Now parallely download the pieces.
         INTERESTED = 2
@@ -464,7 +465,7 @@ def main():
         raise NotImplementedError(f"Unknown command {command}")
 
 
-def get_piece_to_peer_ips(peer_ip_to_tcp_conn: dict) -> dict[int, list[str]]:
+def get_piece_to_peer_ips(peer_ip_to_tcp_conn: dict, num_pieces) -> dict[int, list[str]]:
     piece_to_peer_ips = defaultdict(list)
     for peer_ip, conn in peer_ip_to_tcp_conn.items():
         # IMPROV: try catch block around all tcp communications, so that we continue to operate other
@@ -477,10 +478,23 @@ def get_piece_to_peer_ips(peer_ip_to_tcp_conn: dict) -> dict[int, list[str]]:
         # Use the byte array to decode which pieces are present.
         # If b'1' then that piece idx is there, if b'0' then not there.
         logging.info(f"The bitset for {peer_ip=} is {payload}")
-        for piece_idx, is_bit_set in enumerate(payload):
+        piece_idx = 0
+        for byte in payload:
             # Assuming left-to-right Endianness.
-            if is_bit_set == b'1':
-                piece_to_peer_ips[piece_idx].append(peer_ip)
+            # In every byte, start from MSb and move toward LSb.
+            for _ in range(8):
+                if byte & (1 << 7):
+                    piece_to_peer_ips[piece_idx].append(peer_ip)
+                else:
+                    logging.info(f"{piece_idx=} not found on {peer_ip=}")
+                # Move next lower bit as the MSb.
+                byte = byte << 1
+                piece_idx += 1
+                if piece_idx >= num_pieces:
+                    break
+            if piece_idx >= num_pieces:
+                break
+
     return piece_to_peer_ips
 
 
