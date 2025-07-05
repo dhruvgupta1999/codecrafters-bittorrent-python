@@ -409,6 +409,7 @@ def main():
 
         # Get mapping of which piece is available on what peers.
         num_pieces = get_num_pieces(decoded_tor_file)
+        logging.info(f"{num_pieces=}")
         piece_to_peer_ips = get_piece_to_peer_ips(peer_ip_to_tcp_conn, num_pieces)
 
         # Now parallely download the pieces.
