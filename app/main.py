@@ -433,7 +433,7 @@ def main():
             if not peer_ip_to_use:
                 logging.error("Some issue in code, peer_ip is None")
             peer_conn = peer_ip_to_tcp_conn[peer_ip_to_use]
-            cur_piece_bytes = get_cur_piece_bytes(cur_piece_index, decoded_tor_file)
+            cur_piece_bytes = get_cur_piece_bytes(piece_idx, decoded_tor_file)
             try:
                 # Send interested msg. This is not really required after every piece download.
                 # But perhaps no harm in sending after every piece download.
@@ -441,7 +441,7 @@ def main():
                 piece_data = download_piece(REQUEST, peer_conn, cur_piece_bytes, piece_idx)
             finally:
                 # Now that piece is downloaded, we can release the connection from busy state.
-                peer_ip_to_lock[peer_ip].release()
+                peer_ip_to_lock[peer_ip_to_use].release()
             return piece_idx, piece_data
 
         num_pieces = get_num_pieces(decoded_tor_file)
@@ -466,7 +466,7 @@ def main():
         raise NotImplementedError(f"Unknown command {command}")
 
 
-def get_piece_to_peer_ips(peer_ip_to_tcp_conn: dict, num_pieces) -> dict[int, list[str]]:
+def get_piece_to_peer_ips(peer_ip_to_tcp_conn: dict, num_pieces) -> dict[int, list[tuple]]:
     piece_to_peer_ips = defaultdict(list)
     for peer_ip, conn in peer_ip_to_tcp_conn.items():
         # IMPROV: try catch block around all tcp communications, so that we continue to operate other
