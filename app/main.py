@@ -338,7 +338,7 @@ def main():
         piece_length = decoded_tor_file[b'info'][b'piece length']
         file_length = decoded_tor_file[b'info'][b'length']
         last_piece_length = file_length % piece_length
-        is_last_piece = cur_piece_index == (file_length / piece_length)
+        is_last_piece = cur_piece_index == (file_length // piece_length)
         cur_piece_bytes = last_piece_length if is_last_piece else piece_length
 
         # Get peers from tracker
