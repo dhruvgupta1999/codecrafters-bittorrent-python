@@ -462,9 +462,9 @@ def main():
         raise NotImplementedError(f"Unknown command {command}")
 
 
-def get_piece_to_peer_ips(peer_ip_to_tcp_conn):
+def get_piece_to_peer_ips(peer_ip_to_tcp_conn: dict) -> dict[int, list[str]]:
     piece_to_peer_ips = defaultdict(list)
-    for peer_ip, conn in peer_ip_to_tcp_conn:
+    for peer_ip, conn in peer_ip_to_tcp_conn.items():
         # IMPROV: try catch block around all tcp communications, so that we continue to operate other
         # peers even if comm with one fails.
         # Wait for a bitfield message from the peer indicating which pieces it has
