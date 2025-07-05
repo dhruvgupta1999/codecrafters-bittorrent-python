@@ -3,7 +3,13 @@ import json
 import sys
 import re
 import logging
+import threading
+import time
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
+import socket
+
 
 logging.basicConfig(level=logging.INFO)
 
@@ -218,6 +224,19 @@ def _get_peer_id(as_bytes=False):
     return 'a' * 20
 
 
+def connect_to_peer(peer_ip, sha_hash_as_bytes):
+    """Return peer ip and the socket after tcp handshake and TOR protocol handshake."""
+    # Can add a retry functionality.
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.connect(peer_ip)
+        _tor_protocol_handshake_with_peer(sock, sha_hash_as_bytes)
+    except:
+        # If unable to connect for any reason, just return None.
+        # We will just depend on other peers for this.
+        return peer_ip, None
+    return peer_ip, sock
+
 
 def main():
     command = sys.argv[1]
@@ -299,7 +318,6 @@ def main():
 
 
         peer_ip, peer_port = peer_info.split(':')
-        import socket
 
         # Create a TCP/IP socket
         tcp_sock_to_peer_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -308,7 +326,7 @@ def main():
         server_address = (peer_ip, int(peer_port))
         try:
             tcp_sock_to_peer_server.connect(server_address)
-            _handshake_with_peer(tcp_sock_to_peer_server, sha_hash_as_bytes)
+            _tor_protocol_handshake_with_peer(tcp_sock_to_peer_server, sha_hash_as_bytes)
         finally:
             tcp_sock_to_peer_server.close()
 
@@ -341,8 +359,8 @@ def main():
         INTERESTED = 2
         REQUEST = 6
         try:
-            tcp_sock_to_peer_server.connect(server_address)
-            _handshake_with_peer(tcp_sock_to_peer_server, sha_hash_as_bytes)
+            tcp_sock_to_peer_server
+            _tor_protocol_handshake_with_peer(tcp_sock_to_peer_server, sha_hash_as_bytes)
             # Wait for a bitfield message from the peer indicating which pieces it has
             # For this challenge, the assumption is that every peer has every piece.
             msg_type, payload = _recv_peer_msg(tcp_sock_to_peer_server)
@@ -375,43 +393,92 @@ def main():
         peer_ips = get_peer_ips_from_tracker(decoded_tor_file)
 
         # Handshake with a peer
-        import socket
+        # Create a TCP/IP socket for each peer_ip
+        peer_ip_to_tcp_conn = {}
 
-        # Create a TCP/IP socket
-        tcp_sock_to_peer_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # Parallely connect to all peers.
+        with ThreadPoolExecutor() as executor:
+            args = [(peer_ip, sha_hash_as_bytes) for peer_ip in peer_ips]
+            results = executor.map(connect_to_peer, args)
+            for peer_ip, sock in results:
+                if sock:
+                    peer_ip_to_tcp_conn[peer_ip] = sock
 
-        # Connect to the server (this does the TCP handshake)
-        # Here I just picked the first peer among list of peers (because every peer has every piece in this challenge).
-        server_address = peer_ips[0]
+        logging.info(f"num peers successfully connected: {len(peer_ip_to_tcp_conn)}")
 
+        # Get mapping of which piece is available on what peers.
+        piece_to_peer_ips = get_piece_to_peer_ips(peer_ip_to_tcp_conn)
+
+        # Now parallely download the pieces.
         INTERESTED = 2
         REQUEST = 6
-        try:
-            tcp_sock_to_peer_server.connect(server_address)
-            _handshake_with_peer(tcp_sock_to_peer_server, sha_hash_as_bytes)
-            # Wait for a bitfield message from the peer indicating which pieces it has
-            # For this challenge, the assumption is that every peer has every piece.
-            msg_type, payload = _recv_peer_msg(tcp_sock_to_peer_server)
-            assert msg_type == 5
-            # Send interested msg
-            _send_peer_msg(tcp_sock_to_peer_server, msg_type=INTERESTED, payload=b'')
-            # Wait for unchoke msg
-            msg_type, payload = _recv_peer_msg(tcp_sock_to_peer_server)
-            assert msg_type == 1
-
-            for cur_piece_index in range(get_num_pieces(decoded_tor_file)):
-                cur_piece_bytes = get_cur_piece_bytes(cur_piece_index, decoded_tor_file)
-                logging.info(f"{cur_piece_index=}")
-                logging.info(f"{cur_piece_bytes=}")
-                download_piece_and_write_to_file(REQUEST, tcp_sock_to_peer_server, cur_piece_bytes,
-                                                 cur_piece_index, piece_download_file_path)
-        finally:
-            tcp_sock_to_peer_server.close()
+        peer_ip_to_lock = {peer_ip: threading.Lock() for peer_ip in peer_ips}
+        # While recv() on peer, it can send you msg type 'choke' (0).
+        # This means you are put on hold while the peer does other things.
+        # In that case you need to wait for an 'unchoke' msg (1).
+        # After sending INTERESTED msg, the first thing peer does is send you an unchoke msg.
+        def parallel_wrapper_dld_piece(piece_idx):
+            peer_ip_to_use = None
+            # Keep retrying until we find a valid peer that we can use.
+            while not peer_ip_to_use:
+                for peer_ip in piece_to_peer_ips[piece_idx]:
+                    if peer_ip_to_lock[peer_ip].acquire(blocking=False):
+                        # We have acquired a connection.
+                        break
 
 
+            peer_conn = peer_ip_to_tcp_conn[peer_ip_to_use]
+            cur_piece_bytes = get_cur_piece_bytes(cur_piece_index, decoded_tor_file)
+            try:
+                # Send interested msg. This is not really required after every piece download.
+                # But perhaps no harm in sending after every piece download.
+                _send_peer_msg(tcp_sock_to_peer_server, msg_type=INTERESTED, payload=b'')
+                piece_data = download_piece(REQUEST, peer_conn, cur_piece_bytes, piece_idx)
+            finally:
+                # Now that piece is downloaded, we can release the connection from busy state.
+                peer_ip_to_lock[peer_ip].release()
+            return piece_idx, piece_data
+
+        num_pieces = get_num_pieces(decoded_tor_file)
+        piece_idx_to_piece_data = None
+        with ThreadPoolExecutor() as executor:
+            results = executor.map(parallel_wrapper_dld_piece, range(num_pieces))
+            piece_idx_to_piece_data = dict(results)
+
+        assert num_pieces == len(piece_idx_to_piece_data)
+        # write to file
+        with open(piece_download_file_path, 'ab') as f:
+            # The block data starts at payload[8]
+            for piece_idx in range(num_pieces):
+                f.write(piece_idx_to_piece_data[piece_idx])
+
+
+        # Close all connections
+        for ip, conn in peer_ip_to_tcp_conn.items():
+            conn.close()
 
     else:
         raise NotImplementedError(f"Unknown command {command}")
+
+
+def get_piece_to_peer_ips(peer_ip_to_tcp_conn):
+    piece_to_peer_ips = defaultdict(list)
+    for peer_ip, conn in peer_ip_to_tcp_conn:
+        # IMPROV: try catch block around all tcp communications, so that we continue to operate other
+        # peers even if comm with one fails.
+        # Wait for a bitfield message from the peer indicating which pieces it has
+        msg_type, payload = _recv_peer_msg(conn)
+        if msg_type != 5:
+            logging.warning(f"{peer_ip=} didn't send the expected bitfield message. "
+                         f"msg_type received {msg_type=}")
+        # Use the byte array to decode which pieces are present.
+        # If b'1' then that piece idx is there, if b'0' then not there.
+        logging.info(f"The bitset for {peer_ip=} is {payload}")
+        for piece_idx, is_bit_set in enumerate(payload):
+            # Assuming left-to-right Endianness.
+            if is_bit_set == b'1':
+                piece_to_peer_ips[piece_idx].append(peer_ip)
+    return piece_to_peer_ips
 
 
 def get_peer_ips_from_tracker(decoded_tor_file) -> list[tuple[str, int]]:
@@ -449,11 +516,23 @@ def get_num_pieces(decoded_tor_file):
     num_pieces = (file_length // piece_length) + (last_piece_length > 1)
     return num_pieces
 
+
 def download_piece_and_write_to_file(REQUEST, client_socket, cur_piece_bytes, query_piece_index,
                                      piece_download_file_path):
+    piece = download_piece(REQUEST, client_socket, cur_piece_bytes, query_piece_index)
+    with open(piece_download_file_path, 'ab') as f:
+        # The block data starts at payload[8]
+        f.write(piece)
+
+
+def download_piece(REQUEST, peer_conn, cur_piece_bytes, query_piece_index):
+    """Returns the piece as byte string."""
+
     # Send request messages and receive 16kB blocks of the piece, till the piece is received completely.
     BLOCK_SIZE = int(2 ** 14)
     block_offset = 0
+    piece = b''
+    logging.info(f"Expected num bytes in piece: {cur_piece_bytes}")
     while block_offset < cur_piece_bytes:
 
         logging.info(f"{block_offset=}")
@@ -461,20 +540,30 @@ def download_piece_and_write_to_file(REQUEST, client_socket, cur_piece_bytes, qu
         logging.info(f"num bytes we are trying to dld: {block_len_to_downld}")
         payload = (query_piece_index.to_bytes(length=4) + block_offset.to_bytes(length=4) +
                    block_len_to_downld.to_bytes(length=4))
-        block_offset += block_len_to_downld
 
-        _send_peer_msg(client_socket, msg_type=REQUEST, payload=payload)
-        msg_type, payload = _recv_peer_msg(client_socket)
+        _send_peer_msg(peer_conn, msg_type=REQUEST, payload=payload)
+        msg_type, payload = _recv_peer_msg(peer_conn)
+
+        if msg_type != 7:
+            logging.info(f"{msg_type=} is not 7 (PIECE)")
+            if msg_type == 0:
+                # We have been given 'choke' (a pause). Wait to be unchoked (msg_type = 1).
+                msg_type, payload = _recv_peer_msg(peer_conn)
+                assert msg_type == 1
+            elif msg_type == 1:
+                # We have been given an 'unchoke', generally peer first give an unchoke and then start
+                # giving the data. Simply continue:
+                continue
+            else:
+                logging.warning(f"Unexpected {msg_type=} is not in [0: choke, 1:unchoke, 7:piece]. ")
+
         recv_piece_idx = int.from_bytes(payload[:4], byteorder='big')
         assert recv_piece_idx == query_piece_index
-        piece_offset = int.from_bytes(payload[4:8], byteorder='big')
+        block_offset = piece_offset = int.from_bytes(payload[4:8], byteorder='big')
         logging.info(f"recvd piece idx: {recv_piece_idx}")
         logging.info(f"recvd piece offset: {piece_offset}")
-        if msg_type != 7:
-            logging.warning(f"{msg_type=} is not 7 (PIECE)")
-        with open(piece_download_file_path, 'ab') as f:
-            # The block data starts at payload[8]
-            f.write(payload[8:])
+        piece += payload[8:]
+    return piece
 
 
 def _recv_peer_msg(client_socket):
@@ -518,7 +607,7 @@ def _send_peer_msg(client_socket, *, msg_type: int, payload: bytes):
     client_socket.sendall(msg)
 
 
-def _handshake_with_peer(client_socket, sha_hash_as_bytes):
+def _tor_protocol_handshake_with_peer(client_socket, sha_hash_as_bytes):
     """
     The handshake is a message consisting of the following parts as described in the peer protocol:
 
@@ -543,7 +632,7 @@ def _handshake_with_peer(client_socket, sha_hash_as_bytes):
     # last 20 bytes of the peer_handshake_data represents the peer id.
     server_peer_id = peer_handshake_data[-20:]
     # Print the server peer id as hexadecimal.
-    print(f"Peer ID: {server_peer_id.hex()}")
+    print(f"Handshake successful. Peer ID: {server_peer_id.hex()}")
 
 
 if __name__ == "__main__":
