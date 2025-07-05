@@ -425,9 +425,11 @@ def main():
                 for peer_ip in piece_to_peer_ips[piece_idx]:
                     if peer_ip_to_lock[peer_ip].acquire(blocking=False):
                         # We have acquired a connection.
+                        peer_ip_to_use = peer_ip
                         break
 
-
+            if not peer_ip_to_use:
+                logging.error("Some issue in code, peer_ip is None")
             peer_conn = peer_ip_to_tcp_conn[peer_ip_to_use]
             cur_piece_bytes = get_cur_piece_bytes(cur_piece_index, decoded_tor_file)
             try:
