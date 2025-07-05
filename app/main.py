@@ -437,7 +437,7 @@ def main():
             try:
                 # Send interested msg. This is not really required after every piece download.
                 # But perhaps no harm in sending after every piece download.
-                _send_peer_msg(tcp_sock_to_peer_server, msg_type=INTERESTED, payload=b'')
+                _send_peer_msg(peer_conn, msg_type=INTERESTED, payload=b'')
                 piece_data = download_piece(REQUEST, peer_conn, cur_piece_bytes, piece_idx)
             finally:
                 # Now that piece is downloaded, we can release the connection from busy state.
