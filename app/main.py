@@ -278,19 +278,8 @@ def main():
         decoded_tor_file = decode_bencode(bencoded_tor_file)
         logging.info(f"decoded tor file: {decoded_tor_file}")
 
-        response = _send_get_request_to_tracker(decoded_tor_file)
-        logging.info(f"response status code: {response.status_code}")
-        becoded_response_content = response.content
-
-        decoded_content = decode_bencode(becoded_response_content)
-        logging.info(f"decoded content: {decoded_content}")
-        peers = decoded_content[b'peers']
-        IP_PORT_CHUNK_SIZE_BYTES = 6
-        for i in range(0, len(peers), IP_PORT_CHUNK_SIZE_BYTES):
-            ip_bytes, port_bytes = peers[i:i+4], peers[i+4:i+IP_PORT_CHUNK_SIZE_BYTES]
-            # If IP bytes are 165 24 59 123 => 165.24.59.123
-            ip_str = '.'.join(f'{b:d}' for b in ip_bytes)
-            port_number = int.from_bytes(port_bytes, byteorder='big')
+        peer_ips = get_peer_ips_from_tracker(decoded_tor_file)
+        for ip_str, port_number in peer_ips:
             print(f'{ip_str}:{port_number}')
 
     elif command == 'handshake':
@@ -313,15 +302,15 @@ def main():
         import socket
 
         # Create a TCP/IP socket
-        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        tcp_sock_to_peer_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
         # Connect to the server (this does the TCP handshake)
         server_address = (peer_ip, int(peer_port))
         try:
-            client_socket.connect(server_address)
-            _handshake_with_peer(client_socket, sha_hash_as_bytes)
+            tcp_sock_to_peer_server.connect(server_address)
+            _handshake_with_peer(tcp_sock_to_peer_server, sha_hash_as_bytes)
         finally:
-            client_socket.close()
+            tcp_sock_to_peer_server.close()
 
     elif command == 'download_piece':
         """
@@ -334,36 +323,16 @@ def main():
         decoded_tor_file = decode_bencode(bencoded_tor_file)
         logging.info(f"decoded tor file: {decoded_tor_file}")
         sha_hash_as_bytes = get_info_sha_hash(decoded_tor_file[b'info'])
-        # ALl pieces will have this much length, except the last piece which has only remainder length...
-        piece_length = decoded_tor_file[b'info'][b'piece length']
-        file_length = decoded_tor_file[b'info'][b'length']
-        last_piece_length = file_length % piece_length
-        is_last_piece = cur_piece_index == (file_length // piece_length)
-        cur_piece_bytes = last_piece_length if is_last_piece else piece_length
+
 
         # Get peers from tracker
-        response = _send_get_request_to_tracker(decoded_tor_file)
-        logging.info(f"response status code: {response.status_code}")
-        becoded_response_content = response.content
-
-        decoded_content = decode_bencode(becoded_response_content)
-        logging.info(f"decoded content: {decoded_content}")
-        peers = decoded_content[b'peers']
-        peer_ips = []
-        IP_PORT_CHUNK_SIZE_BYTES = 6
-        for i in range(0, len(peers), IP_PORT_CHUNK_SIZE_BYTES):
-            ip_bytes, port_bytes = peers[i:i + 4], peers[i + 4:i + IP_PORT_CHUNK_SIZE_BYTES]
-            # If IP bytes are 165 24 59 123 => 165.24.59.123
-            ip_str = '.'.join(f'{b:d}' for b in ip_bytes)
-            port_number = int.from_bytes(port_bytes, byteorder='big')
-            peer_ips.append((ip_str, port_number))
-            logging.info(f'{ip_str}:{port_number}')
+        peer_ips = get_peer_ips_from_tracker(decoded_tor_file)
 
         # Handshake with a peer
         import socket
 
         # Create a TCP/IP socket
-        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        tcp_sock_to_peer_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
         # Connect to the server (this does the TCP handshake)
         # Here I just picked the first peer among list of peers (because every peer has every piece in this challenge).
@@ -372,48 +341,140 @@ def main():
         INTERESTED = 2
         REQUEST = 6
         try:
-            client_socket.connect(server_address)
-            _handshake_with_peer(client_socket, sha_hash_as_bytes)
+            tcp_sock_to_peer_server.connect(server_address)
+            _handshake_with_peer(tcp_sock_to_peer_server, sha_hash_as_bytes)
             # Wait for a bitfield message from the peer indicating which pieces it has
             # For this challenge, the assumption is that every peer has every piece.
-            msg_type, payload = _recv_peer_msg(client_socket)
+            msg_type, payload = _recv_peer_msg(tcp_sock_to_peer_server)
             assert msg_type == 5
             # Send interested msg
-            _send_peer_msg(client_socket, msg_type=INTERESTED, payload=b'')
+            _send_peer_msg(tcp_sock_to_peer_server, msg_type=INTERESTED, payload=b'')
             # Wait for unchoke msg
-            msg_type, payload = _recv_peer_msg(client_socket)
+            msg_type, payload = _recv_peer_msg(tcp_sock_to_peer_server)
             assert msg_type == 1
-            # Send request messages and receive 16kB blocks of the piece, till the piece is received completely.
-            BLOCK_SIZE = int(2**14)
-            block_offset = 0
+            cur_piece_bytes = get_cur_piece_bytes(cur_piece_index, decoded_tor_file)
             logging.info(f"{cur_piece_bytes=}")
-            while block_offset < cur_piece_bytes:
-
-                logging.info(f"{block_offset=}")
-                block_len_to_downld = int(min(BLOCK_SIZE, cur_piece_bytes - block_offset))
-                logging.info(f"num bytes we are trying to dld: {block_len_to_downld}")
-                payload = (cur_piece_index.to_bytes(length=4) + block_offset.to_bytes(length=4) +
-                           block_len_to_downld.to_bytes(length=4))
-                block_offset += block_len_to_downld
-
-                _send_peer_msg(client_socket, msg_type=REQUEST, payload=payload)
-                msg_type, payload = _recv_peer_msg(client_socket)
-                piece_idx = int.from_bytes(payload[:4], byteorder='big')
-                piece_offset = int.from_bytes(payload[4:8], byteorder='big')
-                logging.info(f"recvd piece idx: {piece_idx}")
-                logging.info(f"recvd piece offset: {piece_offset}")
-                if msg_type != 7:
-                    logging.warning(f"{msg_type=} is not 7 (PIECE)")
-                with open(piece_download_file_path, 'ab') as f:
-                    # The block data starts at payload[8]
-                    f.write(payload[8:])
+            download_piece_and_write_to_file(REQUEST, tcp_sock_to_peer_server, cur_piece_bytes,
+                                             cur_piece_index, piece_download_file_path)
         finally:
-            client_socket.close()
+            tcp_sock_to_peer_server.close()
+
+    elif command == 'download':
+        """
+        $ ./your_program.sh download -o /tmp/test-piece sample.torrent
+        """
+        piece_download_file_path = sys.argv[3]
+        tor_file_path = sys.argv[4]
+        bencoded_tor_file = _read_tor_file(tor_file_path)
+        decoded_tor_file = decode_bencode(bencoded_tor_file)
+        logging.info(f"decoded tor file: {decoded_tor_file}")
+        sha_hash_as_bytes = get_info_sha_hash(decoded_tor_file[b'info'])
+
+
+        # Get peers from tracker
+        peer_ips = get_peer_ips_from_tracker(decoded_tor_file)
+
+        # Handshake with a peer
+        import socket
+
+        # Create a TCP/IP socket
+        tcp_sock_to_peer_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+        # Connect to the server (this does the TCP handshake)
+        # Here I just picked the first peer among list of peers (because every peer has every piece in this challenge).
+        server_address = peer_ips[0]
+
+        INTERESTED = 2
+        REQUEST = 6
+        try:
+            tcp_sock_to_peer_server.connect(server_address)
+            _handshake_with_peer(tcp_sock_to_peer_server, sha_hash_as_bytes)
+            # Wait for a bitfield message from the peer indicating which pieces it has
+            # For this challenge, the assumption is that every peer has every piece.
+            msg_type, payload = _recv_peer_msg(tcp_sock_to_peer_server)
+            assert msg_type == 5
+            # Send interested msg
+            _send_peer_msg(tcp_sock_to_peer_server, msg_type=INTERESTED, payload=b'')
+            # Wait for unchoke msg
+            msg_type, payload = _recv_peer_msg(tcp_sock_to_peer_server)
+            assert msg_type == 1
+
+            for cur_piece_index in range(get_num_pieces(decoded_tor_file)):
+                cur_piece_bytes = get_cur_piece_bytes(cur_piece_index, decoded_tor_file)
+                logging.info(f"{cur_piece_index=}")
+                logging.info(f"{cur_piece_bytes=}")
+                download_piece_and_write_to_file(REQUEST, tcp_sock_to_peer_server, cur_piece_bytes,
+                                                 cur_piece_index, piece_download_file_path)
+        finally:
+            tcp_sock_to_peer_server.close()
 
 
 
     else:
         raise NotImplementedError(f"Unknown command {command}")
+
+
+def get_peer_ips_from_tracker(decoded_tor_file) -> list[tuple[str, int]]:
+    response = _send_get_request_to_tracker(decoded_tor_file)
+    logging.info(f"response status code: {response.status_code}")
+    becoded_response_content = response.content
+    decoded_content = decode_bencode(becoded_response_content)
+    logging.info(f"decoded content: {decoded_content}")
+    peers = decoded_content[b'peers']
+    peer_ips = []
+    IP_PORT_CHUNK_SIZE_BYTES = 6
+    for i in range(0, len(peers), IP_PORT_CHUNK_SIZE_BYTES):
+        ip_bytes, port_bytes = peers[i:i + 4], peers[i + 4:i + IP_PORT_CHUNK_SIZE_BYTES]
+        # If IP bytes are 165 24 59 123 => 165.24.59.123
+        ip_str = '.'.join(f'{b:d}' for b in ip_bytes)
+        port_number = int.from_bytes(port_bytes, byteorder='big')
+        peer_ips.append((ip_str, port_number))
+        logging.info(f'{ip_str}:{port_number}')
+    return peer_ips
+
+
+def get_cur_piece_bytes(cur_piece_index, decoded_tor_file):
+    # ALl pieces will have this tor_file[info][piece length] length, except the last piece which has only remainder length...
+    piece_length = decoded_tor_file[b'info'][b'piece length']
+    file_length = decoded_tor_file[b'info'][b'length']
+    last_piece_length = file_length % piece_length
+    is_last_piece = cur_piece_index == (file_length // piece_length)
+    cur_piece_bytes = last_piece_length if is_last_piece else piece_length
+    return cur_piece_bytes
+
+def get_num_pieces(decoded_tor_file):
+    piece_length = decoded_tor_file[b'info'][b'piece length']
+    file_length = decoded_tor_file[b'info'][b'length']
+    last_piece_length = file_length % piece_length
+    num_pieces = (file_length // piece_length) + (last_piece_length > 1)
+    return num_pieces
+
+def download_piece_and_write_to_file(REQUEST, client_socket, cur_piece_bytes, query_piece_index,
+                                     piece_download_file_path):
+    # Send request messages and receive 16kB blocks of the piece, till the piece is received completely.
+    BLOCK_SIZE = int(2 ** 14)
+    block_offset = 0
+    while block_offset < cur_piece_bytes:
+
+        logging.info(f"{block_offset=}")
+        block_len_to_downld = int(min(BLOCK_SIZE, cur_piece_bytes - block_offset))
+        logging.info(f"num bytes we are trying to dld: {block_len_to_downld}")
+        payload = (query_piece_index.to_bytes(length=4) + block_offset.to_bytes(length=4) +
+                   block_len_to_downld.to_bytes(length=4))
+        block_offset += block_len_to_downld
+
+        _send_peer_msg(client_socket, msg_type=REQUEST, payload=payload)
+        msg_type, payload = _recv_peer_msg(client_socket)
+        recv_piece_idx = int.from_bytes(payload[:4], byteorder='big')
+        assert recv_piece_idx == query_piece_index
+        piece_offset = int.from_bytes(payload[4:8], byteorder='big')
+        logging.info(f"recvd piece idx: {recv_piece_idx}")
+        logging.info(f"recvd piece offset: {piece_offset}")
+        if msg_type != 7:
+            logging.warning(f"{msg_type=} is not 7 (PIECE)")
+        with open(piece_download_file_path, 'ab') as f:
+            # The block data starts at payload[8]
+            f.write(payload[8:])
 
 
 def _recv_peer_msg(client_socket):
