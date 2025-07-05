@@ -386,6 +386,7 @@ def main():
 
                 logging.info(f"{block_offset=}")
                 block_len_to_downld = int(min(BLOCK_SIZE, piece_length - block_offset))
+                logging.info(f"num bytes we are trying to dld: {block_len_to_downld}")
                 payload = (piece_index.to_bytes(length=4) + block_offset.to_bytes(length=4) +
                            block_len_to_downld.to_bytes(length=4))
                 block_offset += block_len_to_downld
