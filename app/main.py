@@ -329,12 +329,17 @@ def main():
         """
         piece_download_file_path = sys.argv[3]
         tor_file_path = sys.argv[4]
-        piece_index = int(sys.argv[5])
+        cur_piece_index = int(sys.argv[5])
         bencoded_tor_file = _read_tor_file(tor_file_path)
         decoded_tor_file = decode_bencode(bencoded_tor_file)
         logging.info(f"decoded tor file: {decoded_tor_file}")
         sha_hash_as_bytes = get_info_sha_hash(decoded_tor_file[b'info'])
+        # ALl pieces will have this much length, except the last piece which has only remainder length...
         piece_length = decoded_tor_file[b'info'][b'piece length']
+        file_length = decoded_tor_file[b'info'][b'length']
+        last_piece_length = file_length % piece_length
+        is_last_piece = cur_piece_index == (file_length / piece_length)
+        cur_piece_bytes = last_piece_length if is_last_piece else piece_length
 
         # Get peers from tracker
         response = _send_get_request_to_tracker(decoded_tor_file)
@@ -381,18 +386,22 @@ def main():
             # Send request messages and receive 16kB blocks of the piece, till the piece is received completely.
             BLOCK_SIZE = int(2**14)
             block_offset = 0
-            logging.info(f"{piece_length=}")
-            while block_offset < piece_length:
+            logging.info(f"{cur_piece_bytes=}")
+            while block_offset < cur_piece_bytes:
 
                 logging.info(f"{block_offset=}")
-                block_len_to_downld = int(min(BLOCK_SIZE, piece_length - block_offset))
+                block_len_to_downld = int(min(BLOCK_SIZE, cur_piece_bytes - block_offset))
                 logging.info(f"num bytes we are trying to dld: {block_len_to_downld}")
-                payload = (piece_index.to_bytes(length=4) + block_offset.to_bytes(length=4) +
+                payload = (cur_piece_index.to_bytes(length=4) + block_offset.to_bytes(length=4) +
                            block_len_to_downld.to_bytes(length=4))
                 block_offset += block_len_to_downld
 
                 _send_peer_msg(client_socket, msg_type=REQUEST, payload=payload)
                 msg_type, payload = _recv_peer_msg(client_socket)
+                piece_idx = int.from_bytes(payload[:4], byteorder='big')
+                piece_offset = int.from_bytes(payload[4:8], byteorder='big')
+                logging.info(f"recvd piece idx: {piece_idx}")
+                logging.info(f"recvd piece offset: {piece_offset}")
                 if msg_type != 7:
                     logging.warning(f"{msg_type=} is not 7 (PIECE)")
                 with open(piece_download_file_path, 'ab') as f:
