@@ -443,8 +443,11 @@ def main():
 
             if not peer_ip_to_use:
                 logging.error("Some issue in code, peer_ip is None")
+
+            logging.info(f"Using {peer_ip} to fetch {piece_idx=}")
             peer_conn = peer_ip_to_tcp_conn[peer_ip_to_use]
             cur_piece_bytes = get_cur_piece_bytes(piece_idx, decoded_tor_file)
+            logging.info(f"Num bytes in {piece_idx=} is {cur_piece_bytes}")
             try:
                 # Send interested msg. This is not really required after every piece download.
                 # But perhaps no harm in sending after every piece download.
