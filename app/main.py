@@ -599,7 +599,10 @@ def download_piece(REQUEST, peer_conn, query_piece_num_bytes, query_piece_index)
         logging.info(f"recvd piece offset: {recvd_piece_offset}")
         assert recv_piece_idx == query_piece_index
         assert recvd_piece_offset == block_offset
+        actual_recvd_data_len = len(payload[8:])
+        logging.info(f"{actual_recvd_data_len=}")
         piece += payload[8:]
+        assert actual_recvd_data_len == block_len_to_downld
         block_offset += block_len_to_downld
     return piece
 
