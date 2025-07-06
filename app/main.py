@@ -557,7 +557,7 @@ def get_num_pieces(decoded_tor_file):
     piece_length = decoded_tor_file[b'info'][b'piece length']
     file_length = decoded_tor_file[b'info'][b'length']
     last_piece_length = file_length % piece_length
-    num_pieces = (file_length // piece_length) + (last_piece_length > 1)
+    num_pieces = (file_length // piece_length) + (last_piece_length > 0)
     return num_pieces
 
 
@@ -635,8 +635,9 @@ def _recv_peer_msg(client_socket):
     logging.info(f"received {msg_len=}")
     data = b''
     while msg_len > 0:
-        data += client_socket.recv(msg_len)
-        msg_len -= len(data)
+        chunk = client_socket.recv(msg_len)
+        data += chunk
+        msg_len -= len(chunk)
     msg_type = int.from_bytes(data[:1], byteorder='big')
     payload = data[1:]
     return msg_type, payload
