@@ -432,19 +432,21 @@ def main():
         # In that case you need to wait for an 'unchoke' msg (1).
         # After sending INTERESTED msg, the first thing peer does is send you an unchoke msg.
         def parallel_wrapper_dld_piece(piece_idx):
+            logging.info(f"parallel_wrapper_dld_piece() for {piece_idx=}")
             peer_ip_to_use = None
             # Keep retrying until we find a valid peer that we can use.
             while not peer_ip_to_use:
                 for peer_ip in piece_to_peer_ips[piece_idx]:
                     if peer_ip_to_lock[peer_ip].acquire(blocking=False):
                         # We have acquired a connection.
+                        logging.info(f"acquired peer_ip to dld {piece_idx=}")
                         peer_ip_to_use = peer_ip
                         break
 
             if not peer_ip_to_use:
                 logging.error("Some issue in code, peer_ip is None")
 
-            logging.info(f"Using {peer_ip} to fetch {piece_idx=}")
+            logging.info(f"Using {peer_ip_to_use} to fetch {piece_idx=}")
             peer_conn = peer_ip_to_tcp_conn[peer_ip_to_use]
             cur_piece_bytes = get_cur_piece_bytes(piece_idx, decoded_tor_file)
             logging.info(f"Num bytes in {piece_idx=} is {cur_piece_bytes}")
@@ -456,6 +458,7 @@ def main():
             finally:
                 # Now that piece is downloaded, we can release the connection from busy state.
                 peer_ip_to_lock[peer_ip_to_use].release()
+                logging.info(f"released peer_ip to dld {piece_idx=}")
             return piece_idx, piece_data
 
         num_pieces = get_num_pieces(decoded_tor_file)
@@ -557,18 +560,18 @@ def download_piece_and_write_to_file(REQUEST, client_socket, cur_piece_bytes, qu
         f.write(piece)
 
 
-def download_piece(REQUEST, peer_conn, cur_piece_bytes, query_piece_index):
+def download_piece(REQUEST, peer_conn, query_piece_num_bytes, query_piece_index):
     """Returns the piece as byte string."""
 
     # Send request messages and receive 16kB blocks of the piece, till the piece is received completely.
     BLOCK_SIZE = int(2 ** 14)
     block_offset = 0
     piece = b''
-    logging.info(f"Expected num bytes in piece: {cur_piece_bytes}")
-    while block_offset < cur_piece_bytes:
+    logging.info(f"Expected num bytes in piece: {query_piece_num_bytes}")
+    while block_offset < query_piece_num_bytes:
 
         logging.info(f"{block_offset=}")
-        block_len_to_downld = int(min(BLOCK_SIZE, cur_piece_bytes - block_offset))
+        block_len_to_downld = int(min(BLOCK_SIZE, query_piece_num_bytes - block_offset))
         logging.info(f"num bytes we are trying to dld: {block_len_to_downld}")
         payload = (query_piece_index.to_bytes(length=4) + block_offset.to_bytes(length=4) +
                    block_len_to_downld.to_bytes(length=4))
@@ -597,7 +600,6 @@ def download_piece(REQUEST, peer_conn, cur_piece_bytes, query_piece_index):
         assert recv_piece_idx == query_piece_index
         assert recvd_piece_offset == block_offset
         piece += payload[8:]
-        # The recvd pi
         block_offset += block_len_to_downld
     return piece
 
