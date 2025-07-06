@@ -615,32 +615,86 @@ def download_piece(REQUEST, peer_conn, query_piece_num_bytes, query_piece_index)
     return piece
 
 
+def _recv_exact_bytes(client_socket, num_bytes):
+    """
+    Receive exactly num_bytes from the socket.
+    This handles the case where recv() returns fewer bytes than requested.
+    """
+    data = b''
+    while len(data) < num_bytes:
+        chunk = client_socket.recv(num_bytes - len(data))
+        if not chunk:
+            raise ConnectionError("Connection closed while receiving data")
+        data += chunk
+    return data
+
+
 def _recv_peer_msg(client_socket):
     """
     This is a blocking call to receive peer message from the peer.
     Peer messages consist of a message length prefix (4 bytes),
     message id (1 byte) and a payload (variable size).
 
-    message length prefix excludes the 4 bytes of the prefix.
-
-    Since the payload can be atmost 16KiloBytes, I took another 1KiB as buffer.
+    Returns: (msg_type, payload) or (None, b'') for keep-alive
     """
-    # Due to TCP chunking, we must always use recv() with the exact number of bytes that we want.
-    # Expected Message length is different from the chunk length the peer sends,
-    # this is because it is possible the peer was able to send only partial payload at a time, say 1KB at a time over TCP
-    # But the expected payload length in the message is 16KB. So we need to loop over recv(n) until we are able to
-    # read entire msg.
-    data_prefix = client_socket.recv(4)
-    msg_len = int.from_bytes(data_prefix[:4], byteorder='big')
-    logging.info(f"received {msg_len=}")
-    data = b''
-    while msg_len > 0:
-        chunk = client_socket.recv(msg_len)
-        data += chunk
-        msg_len -= len(chunk)
-    msg_type = int.from_bytes(data[:1], byteorder='big')
-    payload = data[1:]
-    return msg_type, payload
+    try:
+        # Receive exactly 4 bytes for message length prefix
+        length_bytes = _recv_exact_bytes(client_socket, 4)
+        msg_len = int.from_bytes(length_bytes, byteorder='big')
+
+        logging.info(f"Received message length: {msg_len}")
+
+        # Handle keep-alive message (length 0)
+        if msg_len == 0:
+            logging.info("Received keep-alive message")
+            return None, b''
+
+        # Receive exactly msg_len bytes for the message body
+        message_body = _recv_exact_bytes(client_socket, msg_len)
+
+        # Extract message type (first byte) and payload (rest)
+        msg_type = message_body[0]  # This is already an int in Python 3
+        payload = message_body[1:]
+
+        logging.info(f"Received message: type={msg_type}, payload_length={len(payload)}")
+
+        # Validate message type
+        if msg_type > 8:
+            logging.error(f"Invalid message type: {msg_type}. This indicates a parsing error!")
+            logging.error(f"Message body (first 20 bytes): {message_body[:20].hex()}")
+            raise ValueError(f"Invalid message type: {msg_type}")
+
+        return msg_type, payload
+
+    except Exception as e:
+        logging.error(f"Error receiving message: {e}")
+        raise
+
+
+# def _recv_peer_msg(client_socket):
+#     """
+#     This is a blocking call to receive peer message from the peer.
+#     Peer messages consist of a message length prefix (4 bytes),
+#     message id (1 byte) and a payload (variable size).
+#
+#     message length excludes the 4 bytes of the prefix used to store message length.
+#     """
+#     # Due to TCP chunking, we must always use recv() with the exact number of bytes that we want.
+#     # Expected Message length is different from the chunk length the peer sends,
+#     # this is because it is possible the peer was able to send only partial payload at a time, say 1KB at a time over TCP
+#     # But the expected payload length in the message is 16KB. So we need to loop over recv(n) until we are able to
+#     # read entire msg.
+#     data_prefix = client_socket.recv(4)
+#     msg_len = int.from_bytes(data_prefix, byteorder='big')
+#     logging.info(f"received {msg_len=}")
+#     data = b''
+#     while msg_len > 0:
+#         chunk = client_socket.recv(msg_len)
+#         data += chunk
+#         msg_len -= len(chunk)
+#     msg_type = int.from_bytes(data[:1], byteorder='big')
+#     payload = data[1:]
+#     return msg_type, payload
 
 def _send_peer_msg(client_socket, *, msg_type: int, payload: bytes):
     """
