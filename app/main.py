@@ -569,6 +569,7 @@ def download_piece(REQUEST, peer_conn, cur_piece_bytes, query_piece_index):
         logging.info(f"num bytes we are trying to dld: {block_len_to_downld}")
         payload = (query_piece_index.to_bytes(length=4) + block_offset.to_bytes(length=4) +
                    block_len_to_downld.to_bytes(length=4))
+        block_offset += block_len_to_downld
 
         _send_peer_msg(peer_conn, msg_type=REQUEST, payload=payload)
         msg_type, payload = _recv_peer_msg(peer_conn)
@@ -589,7 +590,7 @@ def download_piece(REQUEST, peer_conn, cur_piece_bytes, query_piece_index):
 
         recv_piece_idx = int.from_bytes(payload[:4], byteorder='big')
         assert recv_piece_idx == query_piece_index
-        block_offset = piece_offset = int.from_bytes(payload[4:8], byteorder='big')
+        piece_offset = int.from_bytes(payload[4:8], byteorder='big')
         logging.info(f"recvd piece idx: {recv_piece_idx}")
         logging.info(f"recvd piece offset: {piece_offset}")
         piece += payload[8:]
