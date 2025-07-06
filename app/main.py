@@ -591,11 +591,11 @@ def download_piece(REQUEST, peer_conn, cur_piece_bytes, query_piece_index):
                 logging.warning(f"Unexpected {msg_type=} is not in [0: choke, 1:unchoke, 7:piece]. ")
 
         recv_piece_idx = int.from_bytes(payload[:4], byteorder='big')
-        assert recv_piece_idx == query_piece_index
         recvd_piece_offset = int.from_bytes(payload[4:8], byteorder='big')
-        assert recvd_piece_offset == block_offset
         logging.info(f"recvd piece idx: {recv_piece_idx}")
         logging.info(f"recvd piece offset: {recvd_piece_offset}")
+        assert recv_piece_idx == query_piece_index
+        assert recvd_piece_offset == block_offset
         piece += payload[8:]
         # The recvd pi
         block_offset += block_len_to_downld
