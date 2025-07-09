@@ -5,7 +5,6 @@ import sys
 import re
 import logging
 import threading
-import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
@@ -18,7 +17,7 @@ logging.basicConfig(level=logging.WARNING)
 # import requests - available if you need it!
 
 # If test_flag is set, we may do certain things in code to make it easy to test.
-TEST_FLAG = True
+TEST_FLAG = False
 if TEST_FLAG:
     logging.warning("The TEST_FLAG is set...")
 
@@ -471,27 +470,27 @@ def main():
 
         num_pieces = get_num_pieces(decoded_tor_file)
         piece_idx_to_piece_data = None
-        # with ThreadPoolExecutor() as executor:
-        #     results = executor.map(parallel_wrapper_dld_piece, range(num_pieces))
-        #     piece_idx_to_piece_data = dict(results)
+        with ThreadPoolExecutor() as executor:
+            results = executor.map(parallel_wrapper_dld_piece, range(num_pieces))
+            piece_idx_to_piece_data = dict(results)
 
-        peer_ip_to_use = peer_ips[0]
-        peer_conn = peer_ip_to_tcp_conn[peer_ip_to_use]
-        _send_peer_msg(peer_conn, msg_type=INTERESTED, payload=b'')
-        msg_type, payload = _recv_peer_msg(peer_conn)
-        logging.info(f"Waiting for unchoke, received {msg_type=}")
-        for piece_idx in range(num_pieces):
-            cur_piece_bytes = get_cur_piece_bytes(piece_idx, decoded_tor_file)
-            logging.info(f"Num bytes in {piece_idx=} is {cur_piece_bytes}")
-            download_piece_and_write_to_file(REQUEST, peer_conn, cur_piece_bytes, piece_idx, piece_download_file_path)
+        # peer_ip_to_use = peer_ips[0]
+        # peer_conn = peer_ip_to_tcp_conn[peer_ip_to_use]
+        # _send_peer_msg(peer_conn, msg_type=INTERESTED, payload=b'')
+        # msg_type, payload = _recv_peer_msg(peer_conn)
+        # logging.info(f"Waiting for unchoke, received {msg_type=}")
+        # for piece_idx in range(num_pieces):
+        #     cur_piece_bytes = get_cur_piece_bytes(piece_idx, decoded_tor_file)
+        #     logging.info(f"Num bytes in {piece_idx=} is {cur_piece_bytes}")
+        #     download_piece_and_write_to_file(REQUEST, peer_conn, cur_piece_bytes, piece_idx, piece_download_file_path)
 
 
-        # assert num_pieces == len(piece_idx_to_piece_data)
-        # # write to file
-        # with open(piece_download_file_path, 'ab') as f:
-        #     # The block data starts at payload[8]
-        #     for piece_idx in range(num_pieces):
-        #         f.write(piece_idx_to_piece_data[piece_idx])
+        assert num_pieces == len(piece_idx_to_piece_data)
+        # write to file
+        with open(piece_download_file_path, 'ab') as f:
+            # The block data starts at payload[8]
+            for piece_idx in range(num_pieces):
+                f.write(piece_idx_to_piece_data[piece_idx])
 
 
         # Close all connections
