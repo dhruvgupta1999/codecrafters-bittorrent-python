@@ -323,18 +323,10 @@ def main():
         sha_hash_as_bytes = get_info_sha_hash(decoded_tor_file[b'info'])
 
 
-        peer_ip, peer_port = peer_info.split(':')
+        peer_ip = peer_info.split(':')
+        peer_ip, sock = connect_to_peer(sha_hash_as_bytes, peer_ip)
+        sock.close()
 
-        # Create a TCP/IP socket
-        tcp_sock_to_peer_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-        # Connect to the server (this does the TCP handshake)
-        server_address = (peer_ip, int(peer_port))
-        try:
-            tcp_sock_to_peer_server.connect(server_address)
-            _tor_protocol_handshake_with_peer(tcp_sock_to_peer_server, sha_hash_as_bytes)
-        finally:
-            tcp_sock_to_peer_server.close()
 
     elif command == 'download_piece':
         """
