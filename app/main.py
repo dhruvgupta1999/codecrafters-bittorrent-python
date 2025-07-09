@@ -323,7 +323,9 @@ def main():
         sha_hash_as_bytes = get_info_sha_hash(decoded_tor_file[b'info'])
 
 
-        peer_ip = peer_info.split(':')
+        ip, port = peer_info.split(':')
+        port = int(port)
+        peer_ip = ip, port
         peer_ip, sock = connect_to_peer(sha_hash_as_bytes, peer_ip)
         sock.close()
 
