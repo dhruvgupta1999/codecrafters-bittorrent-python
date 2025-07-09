@@ -12,7 +12,7 @@ from typing import Any
 import socket
 
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.WARNING)
 
 # import bencodepy - available if you need it!
 # import requests - available if you need it!
@@ -486,12 +486,12 @@ def main():
             download_piece_and_write_to_file(REQUEST, peer_conn, cur_piece_bytes, piece_idx, piece_download_file_path)
 
 
-        assert num_pieces == len(piece_idx_to_piece_data)
-        # write to file
-        with open(piece_download_file_path, 'ab') as f:
-            # The block data starts at payload[8]
-            for piece_idx in range(num_pieces):
-                f.write(piece_idx_to_piece_data[piece_idx])
+        # assert num_pieces == len(piece_idx_to_piece_data)
+        # # write to file
+        # with open(piece_download_file_path, 'ab') as f:
+        #     # The block data starts at payload[8]
+        #     for piece_idx in range(num_pieces):
+        #         f.write(piece_idx_to_piece_data[piece_idx])
 
 
         # Close all connections
