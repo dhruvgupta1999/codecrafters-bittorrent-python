@@ -8,7 +8,6 @@ import threading
 import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from multiprocessing import Value
 from typing import Any
 import socket
 
@@ -430,8 +429,8 @@ def main():
         peer_ip_to_lock = {peer_ip: threading.Lock() for peer_ip in peer_ips}
         # We don't want to send INTERESTED msg repeatedly, so keep track of which peers we have
         # already told that we are INTERESTED.
-        # 'b' for boolean, initial value False
-        peer_ip_to_interested_status = {peer_ip: Value('b', False) for peer_ip in peer_ips}
+        # Here I am using bool instead of any lock, cuz we are already in critical section when interested status is updated.
+        peer_ip_to_interested_status = {peer_ip: False for peer_ip in peer_ips}
         # While recv() on peer, it can send you msg type 'choke' (0).
         # This means you are put on hold while the peer does other things.
         # In that case you need to wait for an 'unchoke' msg (1).
@@ -462,7 +461,7 @@ def main():
                     logging.info(f"Waiting for unchoke, received {msg_type=}")
                     # Wait for unchoke msg
                     assert msg_type == 1
-                    peer_ip_to_interested_status[peer_ip_to_use] = not peer_ip_to_interested_status[peer_ip_to_use]
+                    peer_ip_to_interested_status[peer_ip_to_use] = True
                 piece_data = download_piece(REQUEST, peer_conn, cur_piece_bytes, piece_idx)
             finally:
                 # Now that piece is downloaded, we can release the connection from busy state.
