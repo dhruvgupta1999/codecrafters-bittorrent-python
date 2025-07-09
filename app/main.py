@@ -478,6 +478,8 @@ def main():
         peer_ip_to_use = peer_ips[0]
         peer_conn = peer_ip_to_tcp_conn[peer_ip_to_use]
         _send_peer_msg(peer_conn, msg_type=INTERESTED, payload=b'')
+        msg_type, payload = _recv_peer_msg(peer_conn)
+        logging.info(f"Waiting for unchoke, received {msg_type=}")
         for piece_idx in range(num_pieces):
             cur_piece_bytes = get_cur_piece_bytes(piece_idx, decoded_tor_file)
             logging.info(f"Num bytes in {piece_idx=} is {cur_piece_bytes}")
