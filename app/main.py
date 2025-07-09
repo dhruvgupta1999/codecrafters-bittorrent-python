@@ -8,6 +8,7 @@ import threading
 import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
+from multiprocessing import Value
 from typing import Any
 import socket
 
@@ -427,6 +428,10 @@ def main():
         INTERESTED = 2
         REQUEST = 6
         peer_ip_to_lock = {peer_ip: threading.Lock() for peer_ip in peer_ips}
+        # We don't want to send INTERESTED msg repeatedly, so keep track of which peers we have
+        # already told that we are INTERESTED.
+        # 'b' for boolean, initial value False
+        peer_ip_to_interested_status = {peer_ip: Value('b', False) for peer_ip in peer_ips}
         # While recv() on peer, it can send you msg type 'choke' (0).
         # This means you are put on hold while the peer does other things.
         # In that case you need to wait for an 'unchoke' msg (1).
@@ -451,9 +456,13 @@ def main():
             cur_piece_bytes = get_cur_piece_bytes(piece_idx, decoded_tor_file)
             logging.info(f"Num bytes in {piece_idx=} is {cur_piece_bytes}")
             try:
-                # Send interested msg. This is not really required after every piece download.
-                # But perhaps no harm in sending after every piece download.
-                _send_peer_msg(peer_conn, msg_type=INTERESTED, payload=b'')
+                if not peer_ip_to_interested_status[peer_ip_to_use]:
+                    _send_peer_msg(peer_conn, msg_type=INTERESTED, payload=b'')
+                    msg_type, payload = _recv_peer_msg(peer_conn)
+                    logging.info(f"Waiting for unchoke, received {msg_type=}")
+                    # Wait for unchoke msg
+                    assert msg_type == 1
+                    peer_ip_to_interested_status[peer_ip_to_use] = not peer_ip_to_interested_status[peer_ip_to_use]
                 piece_data = download_piece(REQUEST, peer_conn, cur_piece_bytes, piece_idx)
             finally:
                 # Now that piece is downloaded, we can release the connection from busy state.
@@ -572,7 +581,7 @@ def download_piece(REQUEST, peer_conn, query_piece_num_bytes, query_piece_index)
     """Returns the piece as byte string."""
 
     # Send request messages and receive 16kB blocks of the piece, till the piece is received completely.
-    BLOCK_SIZE = int(2 ** 10)
+    BLOCK_SIZE = int(2 ** 14)
     block_offset = 0
     piece = b''
     logging.info(f"Expected num bytes in piece: {query_piece_num_bytes}")
@@ -588,18 +597,7 @@ def download_piece(REQUEST, peer_conn, query_piece_num_bytes, query_piece_index)
         msg_type, payload = _recv_peer_msg(peer_conn)
 
         if msg_type != 7:
-            logging.info(f"{msg_type=} is not 7 (PIECE)")
-            if msg_type == 0:
-                # We have been given 'choke' (a pause). Wait to be unchoked (msg_type = 1).
-                msg_type, payload = _recv_peer_msg(peer_conn)
-                assert msg_type == 1
-                continue
-            elif msg_type == 1:
-                # We have been given an 'unchoke', generally peer first give an unchoke and then start
-                # giving the data. Simply continue:
-                continue
-            else:
-                logging.warning(f"Unexpected {msg_type=} is not in [0: choke, 1:unchoke, 7:piece]. ")
+            logging.error(f"{msg_type=} is not 7 (PIECE)")
 
         recv_piece_idx = int.from_bytes(payload[:4], byteorder='big')
         recvd_piece_offset = int.from_bytes(payload[4:8], byteorder='big')
