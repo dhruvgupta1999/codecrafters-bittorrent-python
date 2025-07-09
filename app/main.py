@@ -572,7 +572,7 @@ def download_piece(REQUEST, peer_conn, query_piece_num_bytes, query_piece_index)
     """Returns the piece as byte string."""
 
     # Send request messages and receive 16kB blocks of the piece, till the piece is received completely.
-    BLOCK_SIZE = int(2 ** 14)
+    BLOCK_SIZE = int(2 ** 10)
     block_offset = 0
     piece = b''
     logging.info(f"Expected num bytes in piece: {query_piece_num_bytes}")
