@@ -365,7 +365,7 @@ def main():
         INTERESTED = 2
         REQUEST = 6
         try:
-            tcp_sock_to_peer_server
+            tcp_sock_to_peer_server.connect(server_address)
             _tor_protocol_handshake_with_peer(tcp_sock_to_peer_server, sha_hash_as_bytes)
             # Wait for a bitfield message from the peer indicating which pieces it has
             # For this challenge, the assumption is that every peer has every piece.
