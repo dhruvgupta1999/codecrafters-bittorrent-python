@@ -61,6 +61,10 @@ def bencode_data(my_data: Any) -> bytes:
 
 
 def _find_cur_element_end(elem_str):
+    """
+    Find the index of the next 'e' byte, which indicates the end of the current bencoded element.
+    Raises ValueError if not found.
+    """
     # find next 'e' which indicates END of current element only.
     e_idx = elem_str.find(b'e')
     if e_idx == -1:
@@ -147,10 +151,17 @@ def _decode_bencode(bencoded_value: bytes, _is_list=False, _is_dict=False) -> tu
 
 
 def decode_bencode(bencoded_value: bytes):
+    """
+    Decode a bencoded value and return the decoded Python object.
+    """
     return _decode_bencode(bencoded_value)[0]
 
 
 def get_info_sha_hash(info: dict, as_hexadecimal=False):
+    """
+    Compute the SHA-1 hash of the bencoded info dictionary from a torrent file.
+    Returns the hash as bytes (default) or as a hexadecimal string if as_hexadecimal is True.
+    """
     bencoded_info = bencode_data(info)
     if as_hexadecimal:
         # 40 hexdigits, as 1 hexdigit is 4 bits.
@@ -224,6 +235,9 @@ def _read_tor_file(tor_file_path):
     return bencoded_value
 
 def _get_peer_id(as_bytes=False):
+    """
+    Return a static peer ID for this client, as bytes or string depending on as_bytes.
+    """
     # This is the peer id of my machine.
     if as_bytes:
         return b'a' * 20
@@ -231,7 +245,10 @@ def _get_peer_id(as_bytes=False):
 
 
 def connect_to_peer(sha_hash_as_bytes, peer_ip):
-    """Return peer ip and the socket after tcp handshake and TOR protocol handshake."""
+    """
+    Connect to a peer using TCP and perform the BitTorrent protocol handshake.
+    Returns a tuple of (peer_ip, socket object) if successful, or (peer_ip, None) on failure.
+    """
     # Can add a retry functionality.
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
@@ -496,6 +513,9 @@ def main():
 
 
 def get_piece_to_peer_ips(peer_ip_to_tcp_conn: dict, num_pieces) -> dict[int, list[tuple]]:
+    """
+    For each piece index, return a list of peer IPs that have that piece, based on bitfield messages from peers.
+    """
     piece_to_peer_ips = defaultdict(list)
     for peer_ip, conn in peer_ip_to_tcp_conn.items():
         # IMPROV: try catch block around all tcp communications, so that we continue to operate other
@@ -529,6 +549,9 @@ def get_piece_to_peer_ips(peer_ip_to_tcp_conn: dict, num_pieces) -> dict[int, li
 
 
 def get_peer_ips_from_tracker(decoded_tor_file) -> list[tuple[str, int]]:
+    """
+    Query the tracker and parse the response to extract a list of (ip, port) tuples for available peers.
+    """
     response = _send_get_request_to_tracker(decoded_tor_file)
     logging.info(f"response status code: {response.status_code}")
     becoded_response_content = response.content
@@ -548,6 +571,12 @@ def get_peer_ips_from_tracker(decoded_tor_file) -> list[tuple[str, int]]:
 
 
 def get_cur_piece_bytes(cur_piece_index, decoded_tor_file):
+    """
+    Return the number of bytes in the specified piece index, handling the last piece which may be shorter.
+    Context:
+    The data is divided into pieces, and each piece is a fixed length.
+    The last piece may be shorter than the other pieces as it contains the remainder of the file.
+    """
     # ALl pieces will have this tor_file[info][piece length] length, except the last piece which has only remainder length...
     piece_length = decoded_tor_file[b'info'][b'piece length']
     file_length = decoded_tor_file[b'info'][b'length']
@@ -557,6 +586,9 @@ def get_cur_piece_bytes(cur_piece_index, decoded_tor_file):
     return cur_piece_bytes
 
 def get_num_pieces(decoded_tor_file):
+    """
+    Return the total number of pieces in the torrent, based on file and piece length.
+    """
     piece_length = decoded_tor_file[b'info'][b'piece length']
     file_length = decoded_tor_file[b'info'][b'length']
     last_piece_length = file_length % piece_length
@@ -566,6 +598,9 @@ def get_num_pieces(decoded_tor_file):
 
 def download_piece_and_write_to_file(REQUEST, client_socket, cur_piece_bytes, query_piece_index,
                                      piece_download_file_path):
+    """
+    Download a piece from a peer and write it to the specified file path.
+    """
     piece = download_piece(REQUEST, client_socket, cur_piece_bytes, query_piece_index)
     with open(piece_download_file_path, 'ab') as f:
         f.write(piece)
