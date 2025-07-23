@@ -32,3 +32,29 @@ Note: This section is for stages 2 and beyond.
    `app/main.py`.
 1. Commit your changes and run `git push origin master` to submit your solution
    to CodeCrafters. Test output will be streamed to your terminal.
+
+
+########################################################################################################
+
+## Supported commands:
+    - decode <bencoded_value>:
+        Decodes a bencoded value from the command line and prints the resulting Python object as JSON.
+    - info <torrent_file_path>:
+        Reads a .torrent file, decodes its metadata, and prints tracker URL, file length, info hash, piece length, and all piece hashes.
+    - peers <torrent_file_path>:
+        Queries the tracker for the given .torrent file and prints a list of available peers (IP:port).
+    - handshake <torrent_file_path> <peer_ip:peer_port>:
+        Connects to a peer and performs the BitTorrent protocol handshake, printing the peer's ID on success.
+    - download_piece -o <output_path> <torrent_file_path> <piece_index>:
+        Downloads a specific piece from a peer and writes it to the given output file.
+    - download -o <output_path> <torrent_file_path>:
+        Downloads the entire file by fetching all pieces from available peers and writing them in order to the output file.
+
+
+### Bencoding data:
+
+- dict: Encoded as 'd<key><value>...e' with keys sorted lexicographically.
+- list: Encoded as 'l<item>...e'.
+- str: Encoded as '<length>:<string>' (UTF-8 bytes).
+- int: Encoded as 'i<integer>e'.
+- bytes: Encoded as '<length>:<bytes>' (raw bytes, not decoded).

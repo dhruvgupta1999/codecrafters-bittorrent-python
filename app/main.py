@@ -26,7 +26,23 @@ PIECE_HASH_LEN_BYTES = 20
 
 def bencode_data(my_data: Any) -> bytes:
     """
-    Binary encode data.
+    Encode a Python object into bencoded bytes, as used in the BitTorrent protocol.
+
+    Supported types:
+        - dict: Encoded as 'd<key><value>...e' with keys sorted lexicographically.
+        - list: Encoded as 'l<item>...e'.
+        - str: Encoded as '<length>:<string>' (UTF-8 bytes).
+        - int: Encoded as 'i<integer>e'.
+        - bytes: Encoded as '<length>:<bytes>' (raw bytes, not decoded).
+
+    Args:
+        my_data: The Python object to encode (dict, list, str, int, or bytes).
+
+    Returns:
+        bytes: The bencoded representation of the input.
+
+    Raises:
+        TypeError: If the input type is not supported for bencoding.
     """
     result = b''
 
@@ -262,6 +278,26 @@ def connect_to_peer(sha_hash_as_bytes, peer_ip):
 
 
 def main():
+    """
+    Main entry point for the BitTorrent client. Parses command-line arguments and executes the requested command.
+
+    Supported commands:
+    - decode <bencoded_value>:
+        Decodes a bencoded value from the command line and prints the resulting Python object as JSON.
+    - info <torrent_file_path>:
+        Reads a .torrent file, decodes its metadata, and prints tracker URL, file length, info hash, piece length, and all piece hashes.
+    - peers <torrent_file_path>:
+        Queries the tracker for the given .torrent file and prints a list of available peers (IP:port).
+    - handshake <torrent_file_path> <peer_ip:peer_port>:
+        Connects to a peer and performs the BitTorrent protocol handshake, printing the peer's ID on success.
+    - download_piece -o <output_path> <torrent_file_path> <piece_index>:
+        Downloads a specific piece from a peer and writes it to the given output file.
+    - download -o <output_path> <torrent_file_path>:
+        Downloads the entire file by fetching all pieces from available peers and writing them in order to the output file.
+
+    Raises:
+        NotImplementedError: If an unknown command is provided.
+    """
     command = sys.argv[1]
 
     # You can use print statements as follows for debugging, they'll be visible when running tests.
